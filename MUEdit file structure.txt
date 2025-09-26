@@ -1,0 +1,83 @@
+
+When importing a ‘.mat’ file, create a structure called signal (Figure 4) and add the following
+variables:
+• signal.data is a matrix of a size nb channels × time where EMG signals from all the grids are vertically concatenated. For example, EMG signals recorded from two grids of 64 electrodes over 10 seconds at a sampling frequency of 2,048 Hz would generate a matrix
+signal.data of a size 128 × 20480.
+• signal.fsamp is the sampling frequency.
+• signal.nChan is the number of recorded channels.
+• signal.ngrid is the number of grids/arrays used to record EMG signals.
+• signal.gridname is an array of cells containing the names of the grids as strings. For example, EMG signals recorded with 2 grids of 64 electrodes, 13 × 5, interelectrode distance 8mm from OT Bioelettronica would generate an array of two cells, with ‘GR08MM1305’ in each cell. If you used different grids or your own system, you must create a name of grids here, and add the configuration of the grid in the function formatsignalHDEMG.m (see below)
+• signal.muscle is an array of cells containing the names of the muscles as strings. For example, EMG signals recorded with 2 grids from the tibialis anterior and the soleus would generate an array of two cells, with ‘Tibialis Anterior’ and ‘Soleus’ in each cell.
+• signal.Pulsetrain is an array of cells containing the motor unit pulse trains for each grid/array of electrodes. The size of each cell is nb motor units × time.
+• signal.Dischargetimes is a set of cells of a size nb grids × nb motor units containing the discharge times of each identified motor unit.
+Optional:
+• signal.target is a vector of a size 1 × time containing the force/torque target displayed to the participant. • signal.path is a vector of a size 1 × time containing the force/torque produced by the participant. If you use another system, or a custom-made grid/array of electrodes, you must also add its configuration in the function formatsignalHDEMG.m. For this, you will need to add in the function if contains(gridname{i}, 'nameofthearray') a condition elseif with the name of your array (Figure 5) and the following variables:
+• ElChannelMap is a matrix or a vector with the position of each channel within the grid/array.
+• discardChannelsVec is a vector of zeros of a size 1 × number of electrodes in the grid/array.
+• IED is the interelectrode distance, e.g., 4 for 4mm.
+• nbelectrodes is the total number of electrodes within the grid/array.
+• emgtype is the type of signals. 1 being for EMG signals recorded with surface electrodes, 2 for EMG signals recorded with intramuscular electrodes.
+
+
+The muedit sample matlab file holds the following three variables which are 1x1 struct, each holds the fileds explained below.
+ - edition a 1x1 struct
+ 	|_ Pulsetrain: a cell of size 1 x ngrid
+		|_ for grid 1 in cell column 1 to grid n in column n, in each cell add a double of size nMotorUnitsPerGrid x n_samples (add the decomposition result here)
+	|_ Dischargetimes: a cell ngrid x max(nMotorUnitsPerGrid accross all grids)
+		|_ in each cell is a double of size 1 x nDischarges (the data holds the indices (time) when the motor unit fires)
+	|_ silval: : a cell ngrid x max(nMotorUnitsPerGrid accross all grids)
+		|_ in each cell is a double containil the sil value
+	|_ time: a double of size 1 x n_samples (add recorded time in seconds here)
+ - parameters a 1x1 struct
+    |_ pathname: a char holding the path to the original source file
+    |_ filename: a char holdingt the original source filename
+    |_ NITER: a double holding the number of iterations performed
+    |_ ref_exist: a double with values 1 indicating yes or 0 indicating no regarding the existance of a reference signal
+    |_ checkEMG: a double with values 1 indicating yes or 0 indicating no regarding if the EMG should be checked (set to 1)
+    |_ nwindows: a double, set to 1
+    |_ differentialmode: a double with values 1 indicating single-differential-mode or 0 indicating monopolar-mode, set to 0
+    |_ peeloff: a double, set to 0
+    |_ covfilter: a double, set to 0
+    |_ alignMUAP: a double, set to 0
+    |_ refineMU: a double, set to 0
+    |_ drawingmode: a double, set to 1
+    |_ nbelectrodes: a double, set to 999
+    |_ thresholdtarget: a double, set to 0.8
+    |_ nbextchan: a double, set to 1000
+    |_ edges: a double, set tp 1
+    |_ contrastfunc: a char, set to 'logcosh'
+    |_ silthr: a double, set to 0.88
+    |_ covthr: a double, set to 0.5
+    |_ peeloffwin: a double, set to 0.025
+    |_ duplicatesthresh: a double, set to 0.3
+    |_ CoVDR: a double, set to 0.3
+ - signal a 1x1 struct
+    |_ data: a double of size n_data x n_samples (add data: first monopolar emg signals followed by reference signals)
+    |_ bipolar: a double of size 2 x n_samples (fill with NaN)
+    |_ fsamp: a double (add sampling frequency)
+    |_ nChan: a double (n_data + 2 biplolar)
+    |_ ngrid: a double (add the number of grids)
+    |_ gridname: a cell of size 1 x ngrid
+        |_ in each cell add the corresponding grid name, e.g., 'GR04MM1305' which corresponds to a 13 rows (n_grid_rows) and 05 columns (n_grid_columns) grid with 04mm IED with connector GR
+    |_ muscle: a cell of size 1 x ngrid
+		|_ in each cell add the corresponding muscle name, e.g., 'Not defined'
+	|_ path: a double of size 1 x n_samples (add the performed path data)
+	|_ target: a double of size 1 x n_samples (add the target path here)
+	|_ coordinates: a cell of size 1 x ngrid
+		|_ in each cell add a n_grid_channels x 2 double. It has the following structure: each row contains the matrix channel row number (1-padded) in the first column and the matrix channel column number in the second column. we will have to use a dedicated function that knows the grid channel locations, n_grid_columns, n_grid_rows, and n_grid_channels
+	|_ IED: a double of size 1 x ngrid (add the ied of each grid as a double)
+	|_ EMGmask: a cell of size 1 x ngrid
+		|_ in each cell add a double of size n_grid_channels x 1 (add channel selection info here: value 0 indicates that this channel should not be removed, 1 indicates it should be removed)
+	|_ emgtype: a double of size 1 x ngrid (each entry is a 1)
+	|_ Pulsetrain: a cell of size 1 x ngrid
+		|_ for grid 1 in cell column 1 to grid n in column n, in each cell add a double of size nMotorUnitsPerGrid x n_samples (add the decomposition result here)
+	|_ Dischargetimes: a cell ngrid x max(nMotorUnitsPerGrid accross all grids)
+		|_ in each cell is a double of size 1 x nDischarges (the data holds the indices (time) when the motor unit fires)
+		
+		
+no used in edition
+	|_ Pulsetrainclean: a cell of size 1 x ngrid
+		|_ for grid 1 in cell column 1 to grid n in column n, in each cell add a double of size nMotorUnitsPerGrid x n_samples (fill with NaN) 
+	|_ Distimeclean: a cell of size 1 x ngrid
+		|_ in each cell is a cell of size 1 x nMotorUnitsPerGrid
+            |_ each cell is a double of size 1 x nDischarges (the data holds the indices (time) when the motor unit fires, add ones )
