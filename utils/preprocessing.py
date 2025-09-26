@@ -2,9 +2,9 @@ import scipy.io as sio
 import numpy as np
 import pandas as pd
 global REF_IDX, CHANNELS, PLOTQ
-REF_IDX = 106 # is using 1x 32 CH and 1x 64 CH grids # !!!OTBio Muovi/Muovi+/Syncstation specific!!!
-CHANNELS = [0, 32]# if Grid 1 is 32 CH [36,100] # if 1st grid is 32 CH and 2nd is 64 CH # !!!OTBio Muovi/Muovi+/Syncstation specific!!!
-PLOTQ = False
+REF_IDX = 70 # is using 1x 32 CH and 1x 64 CH grids # !!!OTBio Muovi/Muovi+/Syncstation specific!!!
+CHANNELS = [0, 64]# if Grid 1 is 32 CH [36,100] # if 1st grid is 32 CH and 2nd is 64 CH # !!!OTBio Muovi/Muovi+/Syncstation specific!!!
+PLOTQ = False # !!set!!
 def extract_raw_emg_metadata(mat_path, config, mat_source='otb+'):
     """
     Extracts and structures raw EMG metadata and signals from a .mat file.

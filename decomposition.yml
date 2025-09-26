@@ -13,6 +13,8 @@ dependencies:
   - seaborn=0.12.2
   - pytorch=2.1.1
   - pytorch-cuda=11.8
+  - pillow=11.3.0
+  - spyder
   - pip
   - pip:
       - easydict==1.13
