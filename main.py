@@ -6,24 +6,27 @@ import scipy.io as sio
 from config.structures import set_random_seed, Config
 from models.scd import SwarmContrastiveDecomposition
 from processing.postprocess import save_results
+from utils.exporting import export_to_openhdemg_json
+from utils.preprocessing import loadEMG_updConfig, extract_raw_emg_metadata
 
 set_random_seed(seed=42)
 
 
 def train(path):
-
-    device = "cuda"
+    print(path)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
     acceptance_silhouette = 0.85
-    extension_factor = 20
+    extension_factor = 20 # will be updated
     time_differentiate = False
     notch_params = [50, 1.0, True] # powerline frequency, bandwidth, filter harmonics
-    low_pass_cutoff = 4400
+    low_pass_cutoff = 500
     high_pass_cutoff = 10
-    start_time = 0
-    end_time = -1
+    start_time = 0 # will be updated
+    end_time = -1 # will be updated
     max_iterations = 250
-    sampling_frequency = 10240
-    peel_off_window_size_ms = 20   # ms
+    sampling_frequency = 2000 # will be updated
+    peel_off_window_size_ms = 50 # 20 # ms
     output_final_source_plot = True
     use_coeff_var_fitness = True
     remove_bad_fr = True
@@ -51,6 +54,7 @@ def train(path):
     # Load data
     if path.suffix == ".mat":
         mat = sio.loadmat(path)
+        mat, config = loadEMG_updConfig(mat, config)
         neural_data = (
             torch.from_numpy(mat["emg"]).t().to(device=device, dtype=torch.float32)
         )  # time, channels
@@ -61,17 +65,19 @@ def train(path):
         raise ValueError(
             "Data format not supported. Please provide data in .mat or .npy format."
         )
-
-    if config.end_time == -1:
-        neural_data = neural_data[config.start_time * sampling_frequency : , :]
-    else:
-        neural_data = neural_data[config.start_time * sampling_frequency : config.end_time * sampling_frequency, :]
+    start_index = int(config.start_time * sampling_frequency)
+    end_index = int(config.end_time * sampling_frequency)
+    neural_data = neural_data[start_index : end_index, : ]
+#    if config.end_time == -1:
+#        neural_data = neural_data[config.start_time * sampling_frequency : , :]
+#    else:
+#        neural_data = neural_data[config.start_time * sampling_frequency : config.end_time * sampling_frequency, :]
 
     # Initiate the model and run
     model = SwarmContrastiveDecomposition()
     predicted_timestamps, dictionary = model.run(neural_data, config)
 
-    return dictionary, predicted_timestamps
+    return dictionary, predicted_timestamps, mat, config
 
 
 if __name__ == "__main__":
@@ -81,17 +87,29 @@ if __name__ == "__main__":
     # del sys
 
     HOME = Path.cwd().joinpath("data", "input")
-    file_name = "emg"
-    path = HOME.joinpath(file_name).with_suffix(".npy")
-
-    output_path = (
-        Path(str(HOME).replace("input", "output"))
-        .joinpath(file_name)
-        .with_suffix(".pkl")
-    )
-    output_path = HOME.joinpath(file_name).with_suffix(".pkl")
-
-    dictionary, _ = train(path)
-
-    save_results(output_path, dictionary)
-    print(f"Saved results to {output_path}")
+    file_names = [f.name for f in HOME.iterdir() if f.is_file() and f.suffix == '.mat']
+    for file_name in file_names:
+        #file_name = "emg"
+        #path = HOME.joinpath(file_name).with_suffix(".npy")
+        print(file_name)
+        path = HOME.joinpath(file_name).with_suffix(".mat") # update HP
+	    output_path = (
+	        Path(str(HOME).replace("input", "output"))
+	        .joinpath(file_name)
+	        .with_suffix(".pkl")
+	    )
+	
+	    dictionary, _, mat, config = train(path)
+	
+	    save_results(output_path, dictionary)
+	    print(f"Saved results to {output_path}")
+	    
+	    # Prepare Raw Data Info for openHDEMG
+	    # --------------------- Additional Dependencies Required -----------------------
+		# 1. **pandas**
+		# 2. **openhdemg**
+		# ------------------------------------------------------------------------------
+        rawEMG_Channels, refSignal, fsamp, ied, extras = extract_raw_emg_metadata(path, config)
+        # Save decomposition result to openhdemg compressed json format
+        export_to_openhdemg_json(config, output_path, rawEMG_Channels, refSignal, ied, fsamp, os.path.join(path), extras)
+    print('--- ALL DONE ---')

@@ -1,4 +1,4 @@
-name: decomposition
+name: decomp_agne
 channels:
   - pytorch
   - nvidia
@@ -24,3 +24,4 @@ dependencies:
       - ruamel-yaml-clib==0.2.8
       - torchaudio==2.1.1
       - torchvision==0.16.1
+      - openhdemg==0.1.2
