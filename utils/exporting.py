@@ -147,7 +147,7 @@ def allocate_muedit_file_structure():
         'target': np.empty((0,), dtype=float),         # 1 x n_samples double: target path
         'coordinates': [],                             # 1 x ngrid cell; each cell: [n_grid_channels x 2] double (row, col) 1-based indices
         'IED': np.empty((0,), dtype=float),            # 1 x ngrid double: IED (mm)
-        'EMGmask': [],                                 # 1 x ngrid cell; each cell: [n_grid_channels x 1] double (0=keep, 1=discard)
+        'EMGmask': [],                                 # 1 x ngrid cell; each cell: [n_grid_channels x 1] double (0=keep, 1=discard): select channels
         'emgtype': [],                                 # 1 x ngrid double; each entry 1 for surface EMG (per manual)
     }
     params = {
@@ -194,7 +194,7 @@ def export_to_muedit_mat(json_load_filepath, ngrid = 1):
     
     # Build 1 x ngrid MATLAB cell
     bad_channel_bool = np.empty((1,ngrid), dtype=object)
-    bad_channel_bool[0,0] = np.asarray(np.zeros(((nCH,1))))
+    bad_channel_bool[0,0] = np.asarray(np.zeros(((nCH,1)))) # ToDo - add bad channels from json_from_openhdemg["EXTRAS"]
     dict_for_muedit['signal']['EMGmask'] = bad_channel_bool
     
     # parameters
