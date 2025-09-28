@@ -25,7 +25,7 @@ def train(path):
     high_pass_cutoff = 10
     start_time = 0 # will be updated
     end_time = -1 # will be updated
-    max_iterations = 12#250
+    max_iterations = 6#250
     sampling_frequency = 2000 # will be updated
     peel_off_window_size_ms = 50 # 20 # ms
     output_final_source_plot = False
@@ -117,16 +117,7 @@ if __name__ == "__main__":
         export_to_openhdemg_json(config, output_path, rawEMG_Channels, refSignal, ied, fsamp, os.path.join(path), extras)
         # Save decomposition result to muEdit compatible .mat format for manual cleaning
         export_to_muedit_mat(
-            config,
-            out_path=output_path,         # the .pkl you just wrote with save_results
-            rawEMG_Channels=rawEMG_Channels,
-            refSignal=refSignal,
-            ied=ied,
-            fsamp=fsamp,
-            fn=path,                      # original source file path (Path or str)
-            channel_splits=None,          # None -> single grid with all EMG channels
-            gridnames=[f"HD{int(ied):02d}MM1305"],  # or your exact grid code
-            muscles=["Not defined"],      # or the actual muscle
+            str(output_path).replace('.pkl','.json')
         )
         
-        print('--- ALL DONE ---')
+    print('--- ALL DONE ---')
