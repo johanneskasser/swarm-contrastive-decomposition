@@ -25,7 +25,7 @@ def train(path):
     high_pass_cutoff = 10
     start_time = 0 # will be updated
     end_time = -1 # will be updated
-    max_iterations = 6#250
+    max_iterations = 250
     sampling_frequency = 2000 # will be updated
     peel_off_window_size_ms = 50 # 20 # ms
     output_final_source_plot = False
@@ -53,9 +53,13 @@ def train(path):
     )
 
     # Load data
+    channel_range = [0,64] # ToDo - get from channelselect
+    ref_path_measured_idx = 70 # ToDo - get from channelselect
+    ref_path_target_idx = 71 # ToDo - get from channelselect
+    bad_channels = [] # ToDo - get from channelselect
     if path.suffix == ".mat":
         mat = sio.loadmat(path)
-        mat, config = loadEMG_updConfig(mat, config)
+        mat, config = loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_measured_idx, bad_channels)
         neural_data = (
             torch.from_numpy(mat["emg"]).t().to(device=device, dtype=torch.float32)
         )  # time, channels
@@ -108,16 +112,12 @@ if __name__ == "__main__":
         print(f"Saved results to {output_path}")
 	    
 	    # Prepare Raw Data Info for openHDEMG
-	    # --------------------- Additional Dependencies Required -----------------------
-		# 1. **pandas**
-		# 2. **openhdemg**
-		# ------------------------------------------------------------------------------
-        rawEMG_Channels, refSignal, fsamp, ied, extras = extract_raw_emg_metadata(path, config)
+        rawEMG_Channels, refSignal, fsamp, ied, extras = extract_raw_emg_metadata(path, config) # ToDo - add bad_channels to extras
         # Save decomposition result to openhdemg compressed json format
-        export_to_openhdemg_json(config, output_path, rawEMG_Channels, refSignal, ied, fsamp, os.path.join(path), extras)
+        export_to_openhdemg_json(config, output_path, rawEMG_Channels, refSignal, ied, fsamp, os.path.join(path), extras) # ToDo - ensure bad_channels is written correctly to extras
         # Save decomposition result to muEdit compatible .mat format for manual cleaning
         export_to_muedit_mat(
-            str(output_path).replace('.pkl','.json')
+            str(output_path).replace('.pkl','.json') # ToDo - ensure to transfer bad_channels to muedit
         )
         
     print('--- ALL DONE ---')

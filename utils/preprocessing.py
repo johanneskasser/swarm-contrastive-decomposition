@@ -1,9 +1,9 @@
 import scipy.io as sio
 import numpy as np
 import pandas as pd
-global REF_IDX, CHANNELS, PLOTQ
-REF_IDX = 70 # is using 1x 32 CH and 1x 64 CH grids # !!!OTBio Muovi/Muovi+/Syncstation specific!!!
-CHANNELS = [0, 64]# if Grid 1 is 32 CH [36,100] # if 1st grid is 32 CH and 2nd is 64 CH # !!!OTBio Muovi/Muovi+/Syncstation specific!!!
+global PLOTQ # REF_IDX, CHANNELS
+#REF_IDX = 70 # is using 1x 32 CH and 1x 64 CH grids # !!!OTBio Muovi/Muovi+/Syncstation specific!!!
+#CHANNELS = [0, 64]# if Grid 1 is 32 CH [36,100] # if 1st grid is 32 CH and 2nd is 64 CH # !!!OTBio Muovi/Muovi+/Syncstation specific!!!
 PLOTQ = False # !!set!!
 def extract_raw_emg_metadata(mat_path, config, mat_source='otb+'):
     """
@@ -15,6 +15,10 @@ def extract_raw_emg_metadata(mat_path, config, mat_source='otb+'):
     - Number of EMG channels
     - Reference signal
     - Raw EMG data
+    
+    Extracts from config:
+    - channel_range (list of size 1,2): EMG channel indices from ... to
+    - ref_path_measured_idx (int): index of the measured performed path of the force/torque reference
     
     Args:
         mat_path (str or Path): Path to the .mat file.
@@ -41,10 +45,10 @@ def extract_raw_emg_metadata(mat_path, config, mat_source='otb+'):
         mat = sio.loadmat(mat_path)
     except FileNotFoundError:
         raise FileNotFoundError(f"MAT file not found at {mat_path}")
-
+    channel_range = config.channel_range
+    ref_path_measured_idx = config.ref_path_measured_idx
     if mat_source == 'otb+':
         # OTBiolab+ Specific Structure
-        ref_path_measured_idx = REF_IDX#106
         idxFrom = int(np.round(config.start_time * config.sampling_frequency))
         idxTo = int(np.round(config.end_time * config.sampling_frequency))
 
@@ -53,7 +57,7 @@ def extract_raw_emg_metadata(mat_path, config, mat_source='otb+'):
 
         # Extract number of channels from the description
         try:
-            description0 = mat['Description'][CHANNELS[0]][0][0]
+            description0 = mat['Description'][channel_range[0]][0][0]
             nCh = int(description0.split(' - ')[2].split(' ')[0][6:8]) * int(description0.split(' - ')[2].split(' ')[0][8:10])
             print(f"Description used: {description0}")
             if nCh%2 == 1:
@@ -63,7 +67,7 @@ def extract_raw_emg_metadata(mat_path, config, mat_source='otb+'):
             raise ValueError("Failed to parse channel count from the .mat file description.")
 
         # Extract raw EMG signal
-        rawEMG_Channels = pd.DataFrame(mat["Data"][idxFrom:idxTo, CHANNELS[0]:CHANNELS[1]])
+        rawEMG_Channels = pd.DataFrame(mat["Data"][idxFrom:idxTo, channel_range[0]:channel_range[1]])
 
         # Extract sampling frequency and inter-electrode distance
         fsamp = mat['SamplingFrequency'][0][0]
@@ -82,7 +86,7 @@ def extract_raw_emg_metadata(mat_path, config, mat_source='otb+'):
 
     return rawEMG_Channels, refSignal, fsamp, ied, extras
 
-def loadEMG_updConfig(mat, config, mat_source='otb+', n_std=7, sFrom=1, sTo=3):
+def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_measured_idx, bad_channels = [], mat_source='otb+', n_std=7, sFrom=1, sTo=3, PLOTQ=False):
     """
     Extract raw EMG data from source file and update decomposition configurations.
 
@@ -92,6 +96,10 @@ def loadEMG_updConfig(mat, config, mat_source='otb+', n_std=7, sFrom=1, sTo=3):
     Args:
         mat (dict): Dictionary containing .mat file data.
         config (Config): Existing configuration object to update.
+        channel_range (list of size 1,2): EMG channel indices from ... to
+        ref_path_target_idx (int): index to target path.
+        ref_path_measured_idx (int): index to performed path.
+        bad_channels (list): channel number to be removed. Defaults to [] 
         mat_source (str, optional): Specifies the source format ('otb+' or 'original'). Defaults to 'otb+'.
         n_std (int, optional): Number of standard deviations for thresholding. Defaults to 7.
         sFrom (int, optional): Baseline force calculation start (in sec). Defaults to 1.
@@ -107,10 +115,6 @@ def loadEMG_updConfig(mat, config, mat_source='otb+', n_std=7, sFrom=1, sTo=3):
         ValueError: If `mat_source` is unsupported.
     """
     if mat_source == 'otb+':
-        channel_range = CHANNELS # mat reference
-        bad_channels = [] # grid reference #10, 11, 24, 37
-        ref_path_target_idx = REF_IDX+1#107
-        ref_path_measured_idx = REF_IDX#106
         # Create the full list of channels
         all_channels = list(range(channel_range[0], channel_range[1]))
         # Filter out channels at indices specified in bad_channels
@@ -146,6 +150,10 @@ def loadEMG_updConfig(mat, config, mat_source='otb+', n_std=7, sFrom=1, sTo=3):
         config.sampling_frequency = fsamp
         n_good_channels = len(good_channels)
         config.extension_factor = int(np.round(1000 / n_good_channels))
+        config.channel_range = channel_range
+        config.ref_path_target_idx = ref_path_target_idx
+        config.ref_path_measured_idx = ref_path_measured_idx
+        config.bad_channels = bad_channels
         print(f"EF: {round(config.extension_factor,2)}")
 
         # Load neural data

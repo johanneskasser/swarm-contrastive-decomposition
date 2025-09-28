@@ -153,8 +153,8 @@ def allocate_muedit_file_structure():
     params = {
         'pathname': '',                # char
         'filename': '',                # char
-        
         }
+    
     return {'signal': signal, 'parameters': params}
 
 def export_to_muedit_mat(json_load_filepath, ngrid = 1):
