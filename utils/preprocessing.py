@@ -154,6 +154,7 @@ def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_
         config.ref_path_target_idx = ref_path_target_idx
         config.ref_path_measured_idx = ref_path_measured_idx
         config.bad_channels = bad_channels
+        # ToDo Add all other decomposition settings to config to be saved in openhdemg EXTRAS later on
         print(f"EF: {round(config.extension_factor,2)}")
 
         # Load neural data

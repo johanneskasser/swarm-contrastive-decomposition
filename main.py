@@ -59,7 +59,7 @@ def train(path):
     bad_channels = [] # ToDo - get from channelselect
     if path.suffix == ".mat":
         mat = sio.loadmat(path)
-        mat, config = loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_measured_idx, bad_channels)
+        mat, config = loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_measured_idx, bad_channels) # ToDo pass all other settings to loadEMG_updConfig, maybe as one dict
         neural_data = (
             torch.from_numpy(mat["emg"]).t().to(device=device, dtype=torch.float32)
         )  # time, channels
@@ -112,7 +112,7 @@ if __name__ == "__main__":
         print(f"Saved results to {output_path}")
 	    
 	    # Prepare Raw Data Info for openHDEMG
-        rawEMG_Channels, refSignal, fsamp, ied, extras = extract_raw_emg_metadata(path, config) # ToDo - add bad_channels to extras
+        rawEMG_Channels, refSignal, fsamp, ied, extras = extract_raw_emg_metadata(path, config) # ToDo - add bad_channels and all other decomposition settings to extras
         # Save decomposition result to openhdemg compressed json format
         export_to_openhdemg_json(config, output_path, rawEMG_Channels, refSignal, ied, fsamp, os.path.join(path), extras) # ToDo - ensure bad_channels is written correctly to extras
         # Save decomposition result to muEdit compatible .mat format for manual cleaning
