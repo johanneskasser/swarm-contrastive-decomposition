@@ -8,12 +8,12 @@ from config.structures import set_random_seed, Config
 from models.scd import SwarmContrastiveDecomposition
 from processing.postprocess import save_results
 from utils.exporting import export_to_openhdemg_json, export_to_muedit_mat
-from utils.preprocessing import loadEMG_updConfig, extract_raw_emg_metadata
+from utils.preprocessing import loadEMG_updConfig, extract_raw_emg_metadata, load_channel_selection_json, get_grids_from_json
 
 set_random_seed(seed=42)
 
 
-def train(path):
+def train(path, grid_info=None, grid_suffix=""):
     print(path)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
@@ -31,7 +31,7 @@ def train(path):
     output_final_source_plot = False
     use_coeff_var_fitness = True
     remove_bad_fr = True
-    clamp_percentile = 0.999  
+    clamp_percentile = 0.999
 
     config = Config(
         device=device,
@@ -53,13 +53,15 @@ def train(path):
     )
 
     # Load data
-    channel_range = [0,64] # ToDo - get from channelselect
-    ref_path_measured_idx = 70 # ToDo - get from channelselect
-    ref_path_target_idx = 71 # ToDo - get from channelselect
-    bad_channels = [] # ToDo - get from channelselect
+    # Default values (will be overridden by grid_info if provided)
+    channel_range = [0,64] # Can be overridden by grid_info
+    ref_path_measured_idx = 70 # Can be set via grid_info or use default
+    ref_path_target_idx = 71 # Can be set via grid_info or use default
+    bad_channels = [] # Will be overridden by grid_info if provided
+
     if path.suffix == ".mat":
         mat = sio.loadmat(path)
-        mat, config = loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_measured_idx, bad_channels) # ToDo pass all other settings to loadEMG_updConfig, maybe as one dict
+        mat, config = loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_measured_idx, bad_channels, grid_info=grid_info)
         neural_data = (
             torch.from_numpy(mat["emg"]).t().to(device=device, dtype=torch.float32)
         )  # time, channels
@@ -95,29 +97,72 @@ if __name__ == "__main__":
     file_names = [f.name for f in HOME.iterdir() if f.is_file() and f.suffix == '.mat']
     if len(file_names) == 0:
         print(f'No .mat files in {HOME}')
+
     for file_name in file_names:
-        #file_name = "emg"
-        #path = HOME.joinpath(file_name).with_suffix(".npy")
-        print(file_name)
-        path = HOME.joinpath(file_name).with_suffix(".mat") # update HP
-        output_path = (
-	        Path(str(HOME).replace("input", "output"))
-	        .joinpath(file_name)
-	        .with_suffix(".pkl")
-	    )
-	
-        dictionary, _, mat, config = train(path)
-	
-        save_results(output_path, dictionary)
-        print(f"Saved results to {output_path}")
-	    
-	    # Prepare Raw Data Info for openHDEMG
-        rawEMG_Channels, refSignal, fsamp, ied, extras = extract_raw_emg_metadata(path, config) # ToDo - add bad_channels and all other decomposition settings to extras
-        # Save decomposition result to openhdemg compressed json format
-        export_to_openhdemg_json(config, output_path, rawEMG_Channels, refSignal, ied, fsamp, os.path.join(path), extras) # ToDo - ensure bad_channels is written correctly to extras
-        # Save decomposition result to muEdit compatible .mat format for manual cleaning
-        export_to_muedit_mat(
-            str(output_path).replace('.pkl','.json') # ToDo - ensure to transfer bad_channels to muedit
-        )
-        
+        print(f"\n{'='*80}")
+        print(f"Processing file: {file_name}")
+        print('='*80)
+
+        path = HOME.joinpath(file_name).with_suffix(".mat")
+
+        # Try to load channel selection JSON
+        channel_selection = load_channel_selection_json(path)
+        grids = get_grids_from_json(channel_selection)
+
+        # If grids are found in JSON, process each grid separately
+        if grids:
+            print(f"\nProcessing {len(grids)} grid(s) separately...")
+            for grid_idx, grid_info in enumerate(grids):
+                grid_key = grid_info.get('grid_key', f'grid_{grid_idx}')
+                print(f"\n{'-'*80}")
+                print(f"Processing grid {grid_idx + 1}/{len(grids)}: {grid_key}")
+                print('-'*80)
+
+                # Create output path with grid suffix
+                output_path = (
+                    Path(str(HOME).replace("input", "output"))
+                    .joinpath(file_name.replace('.mat', f'_{grid_key}'))
+                    .with_suffix(".pkl")
+                )
+
+                # Train model for this grid
+                dictionary, _, mat, config = train(path, grid_info=grid_info, grid_suffix=f"_{grid_key}")
+
+                # Save results
+                save_results(output_path, dictionary)
+                print(f"Saved results to {output_path}")
+
+                # Prepare Raw Data Info for openHDEMG
+                rawEMG_Channels, refSignal, fsamp, ied, extras = extract_raw_emg_metadata(path, config)
+                # Save decomposition result to openhdemg compressed json format
+                export_to_openhdemg_json(config, output_path, rawEMG_Channels, refSignal, ied, fsamp, os.path.join(path), extras)
+                # Save decomposition result to muEdit compatible .mat format for manual cleaning
+                export_to_muedit_mat(str(output_path).replace('.pkl', '.json'))
+
+                print(f"Grid {grid_key} processing complete!")
+
+        else:
+            # No channel selection JSON found - use original behavior (backward compatibility)
+            print("\nNo channel selection JSON found. Using default channel configuration...")
+
+            output_path = (
+                Path(str(HOME).replace("input", "output"))
+                .joinpath(file_name)
+                .with_suffix(".pkl")
+            )
+
+            dictionary, _, mat, config = train(path)
+
+            save_results(output_path, dictionary)
+            print(f"Saved results to {output_path}")
+
+            # Prepare Raw Data Info for openHDEMG
+            rawEMG_Channels, refSignal, fsamp, ied, extras = extract_raw_emg_metadata(path, config)
+            # Save decomposition result to openhdemg compressed json format
+            export_to_openhdemg_json(config, output_path, rawEMG_Channels, refSignal, ied, fsamp, os.path.join(path), extras)
+            # Save decomposition result to muEdit compatible .mat format for manual cleaning
+            export_to_muedit_mat(str(output_path).replace('.pkl', '.json'))
+
+    print('\n' + '='*80)
     print('--- ALL DONE ---')
+    print('='*80)
