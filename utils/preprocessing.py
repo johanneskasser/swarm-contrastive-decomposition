@@ -58,18 +58,40 @@ def extract_raw_emg_metadata(mat_path, config, mat_source='otb+'):
         refSignal = pd.DataFrame(mat['Data'][idxFrom:idxTo, ref_path_measured_idx])
 
         # Extract number of channels from the description
+        description0 = None
         try:
             description0 = mat['Description'][channel_range[0]][0][0]
             # Convert numpy array to string if necessary
             if isinstance(description0, np.ndarray):
                 description0 = str(description0[0]) if description0.size > 0 else str(description0)
-            nCh = int(description0.split(' - ')[2].split(' ')[0][6:8]) * int(description0.split(' - ')[2].split(' ')[0][8:10])
-            print(f"Description used: {description0}")
-            if nCh%2 == 1:
-                nCh = nCh - 1
-            print(f" ... exporting {nCh} channels")
-        except (KeyError, IndexError, ValueError):
-            raise ValueError("Failed to parse channel count from the .mat file description.")
+            print(f"Description found: {description0}")
+        except (KeyError, IndexError, ValueError) as e:
+            print(f"Warning: Could not extract description: {e}")
+
+        # Try to get nCh from grid_info first, then from description, then from channel_range
+        nCh = None
+        if hasattr(config, 'grid_info') and config.grid_info is not None:
+            grid_rows = config.grid_info.get('grid_rows', None)
+            grid_cols = config.grid_info.get('grid_cols', None)
+            if grid_rows is not None and grid_cols is not None:
+                nCh = grid_rows * grid_cols
+                print(f" ... nCh from grid_info: {nCh} ({grid_rows}x{grid_cols})")
+
+        if nCh is None and description0 is not None:
+            try:
+                nCh = int(description0.split(' - ')[2].split(' ')[0][6:8]) * int(description0.split(' - ')[2].split(' ')[0][8:10])
+                print(f" ... nCh from description: {nCh}")
+            except (IndexError, ValueError) as e:
+                print(f"Warning: Could not parse nCh from description format: {e}")
+
+        if nCh is None:
+            # Fallback: calculate from channel_range
+            nCh = channel_range[1] - channel_range[0]
+            print(f" ... nCh from channel_range: {nCh}")
+
+        if nCh % 2 == 1:
+            nCh = nCh - 1
+        print(f" ... exporting {nCh} channels")
 
         # Extract raw EMG signal
         rawEMG_Channels = pd.DataFrame(mat["Data"][idxFrom:idxTo, channel_range[0]:channel_range[1]])
@@ -78,17 +100,28 @@ def extract_raw_emg_metadata(mat_path, config, mat_source='otb+'):
         fsamp = mat['SamplingFrequency'][0][0]
 
         # Try to get IED from grid_info if available, otherwise from description
+        ied = None
         if hasattr(config, 'grid_info') and config.grid_info is not None:
-            ied = config.grid_info.get('inter_electrode_distance_mm', 8)
-            print(f" ... IED from grid_info: {ied}")
-        else:
-            ied = float(description0.split(' - ')[2].split(' ')[0][2:4])
-            print(f" ... IED from description: {ied}")
+            ied = config.grid_info.get('inter_electrode_distance_mm', None)
+            if ied is not None:
+                print(f" ... IED from grid_info: {ied}")
+
+        if ied is None and description0 is not None:
+            try:
+                ied = float(description0.split(' - ')[2].split(' ')[0][2:4])
+                print(f" ... IED from description: {ied}")
+            except (IndexError, ValueError) as e:
+                print(f"Warning: Could not parse IED from description format: {e}")
+
+        if ied is None:
+            # Default fallback value
+            ied = 8.0
+            print(f" ... IED using default: {ied}")
 
         # Extract additional metadata
         extras = pd.DataFrame([
-            description0.replace('(1)', ''), 
-            mat['Description'][ref_path_measured_idx][0][0], 
+            description0.replace('(1)', '') if description0 is not None else '',
+            mat['Description'][ref_path_measured_idx][0][0] if ref_path_measured_idx < len(mat['Description']) else '',
             str(config)
         ])
     
