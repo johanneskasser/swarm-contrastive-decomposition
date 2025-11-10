@@ -269,7 +269,8 @@ def get_grids_from_json(json_data):
             'rows': grid.get('rows', 0),
             'columns': grid.get('columns', 0),
             'inter_electrode_distance_mm': grid.get('inter_electrode_distance_mm', 8),
-            'channels': grid.get('channels', [])
+            'channels': grid.get('channels', []),
+            'reference_signals': grid.get('reference_signals', [])
         }
         grids.append(grid_info)
 
@@ -277,7 +278,8 @@ def get_grids_from_json(json_data):
     for grid in grids:
         n_channels = len(grid['channels'])
         n_selected = sum(1 for ch in grid['channels'] if ch.get('selected', False))
-        print(f"  - {grid['grid_key']}: {n_selected}/{n_channels} channels selected")
+        n_refs = len(grid['reference_signals'])
+        print(f"  - {grid['grid_key']}: {n_selected}/{n_channels} channels selected, {n_refs} reference signal(s)")
 
     return grids
 

@@ -60,6 +60,20 @@ def train(path, grid_info=None, grid_suffix=""):
     ref_path_target_idx = 71 # Can be set via grid_info or use default
     bad_channels = [] # Will be overridden by grid_info if provided
 
+    # Extract reference signal indices from grid_info if available
+    if grid_info is not None and 'reference_signals' in grid_info:
+        ref_signals = grid_info['reference_signals']
+        if ref_signals:
+            # Look for "Performed Path" and "Original Path" in reference signals
+            for ref_sig in ref_signals:
+                name = ref_sig.get('name', '').lower()
+                if 'performed' in name or 'measured' in name:
+                    ref_path_measured_idx = ref_sig['ref_index']
+                    print(f"Using ref_path_measured_idx from JSON: {ref_path_measured_idx} ({ref_sig.get('name', 'unknown')})")
+                elif 'original' in name or 'target' in name:
+                    ref_path_target_idx = ref_sig['ref_index']
+                    print(f"Using ref_path_target_idx from JSON: {ref_path_target_idx} ({ref_sig.get('name', 'unknown')})")
+
     if path.suffix == ".mat":
         mat = sio.loadmat(path)
         mat, config = loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_measured_idx, bad_channels, grid_info=grid_info)
