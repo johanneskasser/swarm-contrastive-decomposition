@@ -229,7 +229,7 @@ class SwarmContrastiveDecomposition(torch.nn.Module):
                         min_peak_separation,
                     )
                     if s.isfinite().all()
-                    else [torch.tensor(0).type_as(s)] * 2
+                    else (torch.tensor([]).type_as(s), torch.tensor(0.0).type_as(s), torch.tensor(0.0).type_as(s))
                 )
                 for s in sources.t()
             ]
