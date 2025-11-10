@@ -60,6 +60,9 @@ def extract_raw_emg_metadata(mat_path, config, mat_source='otb+'):
         # Extract number of channels from the description
         try:
             description0 = mat['Description'][channel_range[0]][0][0]
+            # Convert numpy array to string if necessary
+            if isinstance(description0, np.ndarray):
+                description0 = str(description0[0]) if description0.size > 0 else str(description0)
             nCh = int(description0.split(' - ')[2].split(' ')[0][6:8]) * int(description0.split(' - ')[2].split(' ')[0][8:10])
             print(f"Description used: {description0}")
             if nCh%2 == 1:
