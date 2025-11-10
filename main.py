@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from pathlib import Path
 import scipy.io as sio
+import argparse
 
 from config.structures import set_random_seed, Config
 from models.scd import SwarmContrastiveDecomposition
@@ -87,23 +88,79 @@ def train(path, grid_info=None, grid_suffix=""):
     return dictionary, predicted_timestamps, mat, config
 
 
+def parse_arguments():
+    """
+    Parse command-line arguments for input and output paths.
+
+    Returns:
+        argparse.Namespace: Parsed arguments containing input_path and output_path
+    """
+    parser = argparse.ArgumentParser(
+        description='Swarm-Contrastive Decomposition for HD-EMG signal processing',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Use default paths (data/input and data/output)
+  python main.py
+
+  # Specify custom input path
+  python main.py --input-path /path/to/input
+
+  # Specify both input and output paths
+  python main.py --input-path /path/to/input --output-path /path/to/output
+
+  # Use short options
+  python main.py -i /path/to/input -o /path/to/output
+        """
+    )
+
+    parser.add_argument(
+        '--input-path', '-i',
+        type=str,
+        default='data/input',
+        help='Path to directory containing input .mat files (default: data/input)'
+    )
+
+    parser.add_argument(
+        '--output-path', '-o',
+        type=str,
+        default='data/output',
+        help='Path to directory for output files (default: data/output)'
+    )
+
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
     # # Uncomment the next three lines to run in interactive window
     # import sys
     # sys.argv=['']
     # del sys
 
-    HOME = Path.cwd().joinpath("data", "input")
-    file_names = [f.name for f in HOME.iterdir() if f.is_file() and f.suffix == '.mat']
+    # Parse command-line arguments
+    args = parse_arguments()
+
+    # Set up input and output paths
+    INPUT_PATH = Path(args.input_path)
+    OUTPUT_PATH = Path(args.output_path)
+
+    # Create output directory if it doesn't exist
+    OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
+
+    print(f"\nInput directory: {INPUT_PATH.resolve()}")
+    print(f"Output directory: {OUTPUT_PATH.resolve()}\n")
+
+    # Get list of .mat files in input directory
+    file_names = [f.name for f in INPUT_PATH.iterdir() if f.is_file() and f.suffix == '.mat']
     if len(file_names) == 0:
-        print(f'No .mat files in {HOME}')
+        print(f'No .mat files in {INPUT_PATH}')
 
     for file_name in file_names:
         print(f"\n{'='*80}")
         print(f"Processing file: {file_name}")
         print('='*80)
 
-        path = HOME.joinpath(file_name).with_suffix(".mat")
+        path = INPUT_PATH.joinpath(file_name).with_suffix(".mat")
 
         # Try to load channel selection JSON
         channel_selection = load_channel_selection_json(path)
@@ -119,11 +176,9 @@ if __name__ == "__main__":
                 print('-'*80)
 
                 # Create output path with grid suffix
-                output_path = (
-                    Path(str(HOME).replace("input", "output"))
-                    .joinpath(file_name.replace('.mat', f'_{grid_key}'))
-                    .with_suffix(".pkl")
-                )
+                output_path = OUTPUT_PATH.joinpath(
+                    file_name.replace('.mat', f'_{grid_key}')
+                ).with_suffix(".pkl")
 
                 # Train model for this grid
                 dictionary, _, mat, config = train(path, grid_info=grid_info, grid_suffix=f"_{grid_key}")
@@ -145,11 +200,7 @@ if __name__ == "__main__":
             # No channel selection JSON found - use original behavior (backward compatibility)
             print("\nNo channel selection JSON found. Using default channel configuration...")
 
-            output_path = (
-                Path(str(HOME).replace("input", "output"))
-                .joinpath(file_name)
-                .with_suffix(".pkl")
-            )
+            output_path = OUTPUT_PATH.joinpath(file_name).with_suffix(".pkl")
 
             dictionary, _, mat, config = train(path)
 
