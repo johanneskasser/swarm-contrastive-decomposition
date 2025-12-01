@@ -20,3 +20,15 @@ __pycache__/
 
 # Ignore venv folder
 venv/
+
+.idea/
+.vscode/
+*.iml
+# Ignore data folders
+data/
+claude/
+CLAUDE.md
+
+# Ignore scheduler job configuration (may contain personal paths)
+jobs_config.json
+jobs_config.json.bak
