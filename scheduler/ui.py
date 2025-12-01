@@ -5,9 +5,19 @@ Provides menu-driven interface for job management.
 """
 
 import os
+import glob
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+# Try to import readline for path completion (Unix/Linux/Mac)
+# On Windows, this will work with pyreadline3 if installed
+try:
+    import readline
+    READLINE_AVAILABLE = True
+except ImportError:
+    READLINE_AVAILABLE = False
+    print("Note: Install 'pyreadline3' for path auto-completion on Windows")
 
 from .job_manager import JobManager
 from .executor import JobExecutor
@@ -20,10 +30,47 @@ class SchedulerUI:
         """Initialize SchedulerUI."""
         self.job_manager = JobManager()
         self.executor = JobExecutor()
+        self._setup_readline()
+
+        # Check for running background jobs on startup
+        self._check_background_jobs_on_startup()
+
+    def _check_background_jobs_on_startup(self):
+        """Check for running background jobs when starting the scheduler."""
+        try:
+            # Update status of any background jobs
+            self.job_manager.check_running_jobs()
+
+            # Check if there are still running jobs
+            running_jobs = self.job_manager.list_jobs(status='running')
+
+            if running_jobs:
+                print("\n" + "="*80)
+                print("BACKGROUND JOBS DETECTED")
+                print("="*80)
+                print(f"\nFound {len(running_jobs)} job(s) running in the background:")
+                for job in running_jobs:
+                    print(f"  - {job['name']} (PID: {job.get('pid', 'unknown')})")
+                print("\nThese jobs will continue running even if you close the scheduler.")
+                print("Use option 1 to view their current status.")
+                input("\nPress Enter to continue...")
+        except ImportError:
+            print("\nWarning: 'psutil' not installed. Cannot track background jobs.")
+            print("Install with: pip install psutil")
+            input("\nPress Enter to continue...")
+        except Exception as e:
+            print(f"\nWarning: Error checking background jobs: {e}")
+            input("\nPress Enter to continue...")
 
     def main_loop(self):
         """Main interactive loop."""
         while True:
+            # Update running job statuses before showing menu
+            try:
+                self.job_manager.check_running_jobs()
+            except:
+                pass  # Silently fail if psutil not available
+
             self._clear_screen()
             self._display_menu()
 
@@ -55,6 +102,91 @@ class SchedulerUI:
     def _clear_screen(self):
         """Clear terminal screen."""
         os.system('cls' if os.name == 'nt' else 'clear')
+
+    def _setup_readline(self):
+        """Setup readline for path auto-completion."""
+        if not READLINE_AVAILABLE:
+            return
+
+        # Set up tab completion for paths
+        readline.set_completer_delims(' \t\n;')
+        readline.parse_and_bind("tab: complete")
+
+        # Platform-specific key bindings
+        if os.name == 'nt':  # Windows
+            readline.parse_and_bind("tab: complete")
+        else:  # Unix/Linux/Mac
+            readline.parse_and_bind("tab: complete")
+
+    def _path_completer(self, text, state):
+        """
+        Path completion function for readline.
+
+        Args:
+            text: Current text to complete
+            state: Iteration state
+
+        Returns:
+            Next completion match or None
+        """
+        # Expand user home directory
+        if text.startswith('~'):
+            text = os.path.expanduser(text)
+
+        # If text is empty or just started, show current directory
+        if not text:
+            text = './'
+
+        # Add trailing slash for directories
+        if os.path.isdir(text) and not text.endswith(os.sep):
+            text += os.sep
+
+        # Get directory and prefix
+        dirname = os.path.dirname(text) or '.'
+        prefix = os.path.basename(text)
+
+        # Find all matches
+        try:
+            matches = []
+            for entry in os.listdir(dirname):
+                if entry.startswith(prefix):
+                    full_path = os.path.join(dirname, entry)
+                    # Add trailing slash for directories
+                    if os.path.isdir(full_path):
+                        matches.append(full_path + os.sep)
+                    else:
+                        matches.append(full_path)
+
+            # Return the match at the given state
+            if state < len(matches):
+                return matches[state]
+            else:
+                return None
+        except (OSError, PermissionError):
+            return None
+
+    def _input_with_completion(self, prompt: str) -> str:
+        """
+        Input with path auto-completion enabled.
+
+        Args:
+            prompt: Input prompt text
+
+        Returns:
+            User input string
+        """
+        if READLINE_AVAILABLE:
+            # Enable path completion
+            readline.set_completer(self._path_completer)
+            try:
+                result = input(prompt)
+            finally:
+                # Disable completer after input
+                readline.set_completer(None)
+            return result
+        else:
+            # Fallback to regular input
+            return input(prompt)
 
     def _display_menu(self):
         """Display main menu."""
@@ -108,6 +240,10 @@ class SchedulerUI:
         print("=" * 80)
         print()
 
+        if READLINE_AVAILABLE:
+            print("💡 Tip: Use TAB for path auto-completion, arrow keys to navigate")
+            print()
+
         try:
             # Get job details from user
             name = input("Job Name: ").strip()
@@ -116,13 +252,13 @@ class SchedulerUI:
                 self._pause()
                 return
 
-            input_path = input("Input Path: ").strip()
+            input_path = self._input_with_completion("Input Path: ").strip()
             if not input_path:
                 print("\nError: Input path cannot be empty")
                 self._pause()
                 return
 
-            output_path = input("Output Path: ").strip()
+            output_path = self._input_with_completion("Output Path: ").strip()
             if not output_path:
                 print("\nError: Output path cannot be empty")
                 self._pause()
@@ -269,7 +405,7 @@ class SchedulerUI:
 
     def _execute_job(self, job: dict):
         """
-        Execute a single job and update its status.
+        Execute a single job in the background and update its status.
 
         Args:
             job: Job dictionary
@@ -277,51 +413,37 @@ class SchedulerUI:
         job_id = job['id']
         start_time = datetime.now()
 
-        # Update status to running
-        self.job_manager.update_job_status(
-            job_id,
-            'running',
-            started_at=start_time.isoformat()
-        )
-
         print(f"\nInput:  {job['input_path']}")
         print(f"Output: {job['output_path']}")
-        print(f"\nStarted: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"\nStarting job in background...")
         print("-" * 80)
-        print()
 
-        # Execute job
-        return_code, duration, log_file = self.executor.run_job(job)
+        try:
+            # Execute job in background
+            pid, log_file = self.executor.run_job_background(job)
 
-        # Determine final status
-        end_time = datetime.now()
-        if return_code == 0:
-            final_status = 'completed'
-            status_text = "✓ SUCCESS"
-        elif return_code == -1:
-            final_status = 'failed'
-            status_text = "✗ INTERRUPTED"
-        else:
-            final_status = 'failed'
-            status_text = f"✗ FAILED (exit code: {return_code})"
+            # Update status to running with PID
+            self.job_manager.update_job_status(
+                job_id,
+                'running',
+                started_at=start_time.isoformat(),
+                log_file=log_file,
+                pid=pid
+            )
 
-        # Update job status
-        self.job_manager.update_job_status(
-            job_id,
-            final_status,
-            completed_at=end_time.isoformat(),
-            duration_seconds=duration,
-            return_code=return_code,
-            log_file=log_file
-        )
+            print(f"\n✓ Job started in background")
+            print(f"  PID: {pid}")
+            print(f"  Log: {log_file}")
+            print(f"\nThe job will continue running even if you close the scheduler.")
+            print(f"You can monitor progress by viewing the log file (option 7).")
 
-        # Display summary
-        print()
-        print("-" * 80)
-        print(f"Completed: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"Duration: {self._format_duration(duration)}")
-        print(f"Status: {status_text}")
-        print(f"Log: {log_file}")
+        except Exception as e:
+            print(f"\n✗ Failed to start job: {str(e)}")
+            self.job_manager.update_job_status(
+                job_id,
+                'failed',
+                completed_at=datetime.now().isoformat()
+            )
 
     def _view_job_details(self):
         """Display detailed information about a specific job."""
@@ -365,6 +487,9 @@ class SchedulerUI:
                 print(f"\nCreated:     {self._format_datetime(job['created_at'])}")
                 print(f"Started:     {self._format_datetime(job.get('started_at'))}")
                 print(f"Completed:   {self._format_datetime(job.get('completed_at'))}")
+
+                if job.get('pid'):
+                    print(f"Process PID: {job['pid']} (running in background)")
 
                 if job.get('duration_seconds'):
                     print(f"Duration:    {self._format_duration(job['duration_seconds'])}")

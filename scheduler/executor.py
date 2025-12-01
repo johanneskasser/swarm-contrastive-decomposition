@@ -4,11 +4,12 @@ Job Executor for HD-EMG Decomposition Scheduler
 Handles job execution via subprocess with output capture and logging.
 """
 
+import os
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 
 
 class JobExecutor:
@@ -17,6 +18,73 @@ class JobExecutor:
     def __init__(self):
         """Initialize JobExecutor."""
         pass
+
+    def run_job_background(self, job: Dict) -> Tuple[int, str]:
+        """
+        Execute a job in the background (detached from this process).
+
+        Args:
+            job: Job dictionary with input_path, output_path, etc.
+
+        Returns:
+            Tuple of (pid, log_file_path)
+        """
+        job_id = job['id']
+        job_name = job['name']
+        input_path = job['input_path']
+        output_path = job['output_path']
+
+        # Create output directory
+        output_dir = Path(output_path)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create log file
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        log_file_path = output_dir / f"decomposition_{timestamp}.log"
+
+        start_time = datetime.now()
+
+        # Write initial log header
+        with open(log_file_path, 'w', encoding='utf-8') as log_file:
+            self._write_log_header(log_file, job, start_time)
+
+        # Determine python executable
+        python_exe = 'python3' if sys.platform != 'win32' else sys.executable
+
+        # Prepare command
+        cmd = [python_exe, 'main.py', '-i', input_path, '-o', output_path]
+
+        # Start process in background (detached)
+        # Platform-specific detachment
+        if sys.platform == 'win32':
+            # Windows: Use CREATE_NEW_PROCESS_GROUP and DETACHED_PROCESS
+            DETACHED_PROCESS = 0x00000008
+            CREATE_NEW_PROCESS_GROUP = 0x00000200
+
+            process = subprocess.Popen(
+                cmd,
+                stdout=open(log_file_path, 'a', encoding='utf-8'),
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                cwd=Path.cwd(),
+                creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                close_fds=True
+            )
+        else:
+            # Unix/Linux/Mac: Use start_new_session
+            process = subprocess.Popen(
+                cmd,
+                stdout=open(log_file_path, 'a', encoding='utf-8'),
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                cwd=Path.cwd(),
+                start_new_session=True,
+                close_fds=True
+            )
+
+        pid = process.pid
+
+        return pid, str(log_file_path)
 
     def run_job(self, job: Dict) -> Tuple[int, float, str]:
         """

@@ -99,7 +99,8 @@ class JobManager:
             "completed_at": None,
             "duration_seconds": None,
             "return_code": None,
-            "log_file": None
+            "log_file": None,
+            "pid": None
         }
 
         # Add to jobs list
@@ -220,6 +221,60 @@ class JobManager:
             self.save_jobs()
 
         return removed_count
+
+    def check_running_jobs(self):
+        """
+        Check all 'running' jobs to see if their processes are still alive.
+        Updates status if process has terminated.
+        """
+        import psutil
+
+        running_jobs = self.list_jobs(status='running')
+
+        for job in running_jobs:
+            pid = job.get('pid')
+            if pid is None:
+                # No PID recorded, mark as failed
+                self.update_job_status(
+                    job['id'],
+                    'failed',
+                    completed_at=datetime.now().isoformat()
+                )
+                continue
+
+            # Check if process is still running
+            try:
+                process = psutil.Process(pid)
+                # Process exists, check if it's actually our process
+                if not process.is_running():
+                    raise psutil.NoSuchProcess(pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                # Process is dead, update status
+                # Try to determine if it succeeded or failed
+                log_file = job.get('log_file')
+                return_code = None
+
+                if log_file and Path(log_file).exists():
+                    # Check log file for status
+                    try:
+                        with open(log_file, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                            if 'Status: SUCCESS' in content:
+                                return_code = 0
+                            elif 'Status: FAILED' in content or 'Status: INTERRUPTED' in content:
+                                return_code = 1
+                    except:
+                        pass
+
+                final_status = 'completed' if return_code == 0 else 'failed'
+
+                self.update_job_status(
+                    job['id'],
+                    final_status,
+                    completed_at=datetime.now().isoformat(),
+                    return_code=return_code,
+                    pid=None
+                )
 
     def _generate_job_id(self) -> str:
         """
