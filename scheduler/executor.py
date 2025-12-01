@@ -51,8 +51,8 @@ class JobExecutor:
         # Determine python executable
         python_exe = 'python3' if sys.platform != 'win32' else sys.executable
 
-        # Prepare command
-        cmd = [python_exe, 'main.py', '-i', input_path, '-o', output_path]
+        # Prepare command (with -u for unbuffered output for real-time logging)
+        cmd = [python_exe, '-u', 'main.py', '-i', input_path, '-o', output_path]
 
         # Start process in background (detached)
         # Platform-specific detachment
@@ -137,7 +137,7 @@ class JobExecutor:
                 python_exe = 'python3' if sys.platform != 'win32' else sys.executable
 
                 process = subprocess.Popen(
-                    [python_exe, 'main.py', '-i', input_path, '-o', output_path],
+                    [python_exe, '-u', 'main.py', '-i', input_path, '-o', output_path],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,  # Combine stderr with stdout
                     text=True,
@@ -195,7 +195,7 @@ JOB: {job['name']} ({job['id']})
 Started: {start_time.strftime('%Y-%m-%d %H:%M:%S')}
 Input Path:  {job['input_path']}
 Output Path: {job['output_path']}
-Command: python3 main.py -i {job['input_path']} -o {job['output_path']}
+Command: python3 -u main.py -i {job['input_path']} -o {job['output_path']}
 {'='*80}
 
 """
