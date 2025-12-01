@@ -99,20 +99,48 @@ Description (optional): Pre-treatment dataset
 
 ### 4. Run Jobs
 
-- Select option `4` to run all pending jobs sequentially
+- Select option `4` to run all pending jobs
 - Or select option `5` to run a single specific job
 
-**Important**: Jobs run in the **background**! This means:
-- ✅ Jobs continue running even if you close the scheduler
-- ✅ You can start multiple jobs and close the terminal
-- ✅ Re-open the scheduler anytime to check status
-- ✅ No need to keep the scheduler window open
+**Execution Modes:**
+
+The scheduler offers three execution modes:
+
+#### Mode 1: Sequential Foreground - **RECOMMENDED** ⭐
+- Jobs run **one at a time** and wait for completion
+- **Full CPU/GPU performance** - no resource competition
+- See real-time output in the terminal
+- Terminal must stay open
+- Perfect for maximum speed and efficiency
+
+#### Mode 2: Sequential Background
+- Jobs run **one at a time** in the background
+- **Full CPU/GPU performance** for each job - no competition
+- You can **close the scheduler** and jobs continue running
+- Jobs wait for the previous one to finish before starting
+- Best for overnight processing with guaranteed sequential execution
+
+#### Mode 3: Parallel Background
+- All jobs start **immediately** in the background
+- Jobs continue running even if you close the scheduler
+- Can cause **slower performance** due to resource competition
+- All jobs compete for CPU/GPU simultaneously
+- Only use if you need all jobs running at once
+
+**When prompted:**
+```
+Execution mode:
+  1. Sequential Foreground (wait for each job) - RECOMMENDED
+  2. Sequential Background (jobs run one-by-one, can close scheduler)
+  3. Parallel Background (all jobs start immediately)
+
+Choose mode (1/2/3) [1]:
+```
 
 The scheduler will:
 - Create output directories automatically
-- Start jobs as background processes
 - Save complete logs to `{output_path}/decomposition_{timestamp}.log`
-- Update job status automatically when you reopen the scheduler
+- Update job status automatically
 
 ## Job Configuration File
 
@@ -251,22 +279,31 @@ tasklist | findstr python
    - Supports `~` for home directory (e.g., `~/Documents/data/`)
    - Install `pyreadline3` on Windows for best experience
 
-2. **Batch Processing & Go**: Add multiple jobs, start them all (option `4`), then close the scheduler
-   - Jobs will continue running in the background
-   - Come back later to check results
-   - Perfect for overnight processing
+2. **Maximum Performance**: Always use **Sequential modes (1 or 2)** when running multiple jobs
+   - Jobs run one at a time with full CPU/GPU access
+   - Much faster than parallel mode (option 3)
+   - No resource competition between jobs
+   - Use Mode 1 (Foreground) to watch progress in real-time
+   - Use Mode 2 (Background) if you need to close the scheduler
 
-3. **Monitor Progress**: Logs are written in real-time - you can tail them while jobs run
+3. **Batch Processing & Go**: For overnight processing, use **Sequential Background (option 2)**
+   - Jobs run one-by-one with full performance
+   - You can close the scheduler and jobs continue
+   - Each job waits for previous one to finish
+   - Come back later to check results
+   - Avoids resource competition unlike parallel mode
+
+4. **Monitor Progress**: Logs are written in real-time - you can tail them while jobs run
    ```bash
    # In another terminal, monitor live progress:
    tail -f /path/to/output/decomposition_*.log
    ```
 
-4. **Clean Up**: Use option `8` to remove completed/failed jobs from the list
+5. **Clean Up**: Use option `8` to remove completed/failed jobs from the list
 
-5. **Check Logs**: Use option `7` to view the last 50 lines of a log file quickly
+6. **Check Logs**: Use option `7` to view the last 50 lines of a log file quickly
 
-6. **Safety**: Jobs are isolated - crashing one job won't affect others
+7. **Safety**: Jobs are isolated - crashing one job won't affect others
 
 ## File Structure
 

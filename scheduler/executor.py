@@ -57,9 +57,10 @@ class JobExecutor:
         # Start process in background (detached)
         # Platform-specific detachment
         if sys.platform == 'win32':
-            # Windows: Use CREATE_NEW_PROCESS_GROUP and DETACHED_PROCESS
-            DETACHED_PROCESS = 0x00000008
+            # Windows: Use CREATE_NEW_PROCESS_GROUP without DETACHED_PROCESS
+            # DETACHED_PROCESS can cause lower priority - we want full performance
             CREATE_NEW_PROCESS_GROUP = 0x00000200
+            CREATE_NO_WINDOW = 0x08000000
 
             process = subprocess.Popen(
                 cmd,
@@ -67,11 +68,11 @@ class JobExecutor:
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
                 cwd=Path.cwd(),
-                creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                creationflags=CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
                 close_fds=True
             )
         else:
-            # Unix/Linux/Mac: Use start_new_session
+            # Unix/Linux/Mac: Use start_new_session with nice level 0 (normal priority)
             process = subprocess.Popen(
                 cmd,
                 stdout=open(log_file_path, 'a', encoding='utf-8'),
@@ -83,6 +84,20 @@ class JobExecutor:
             )
 
         pid = process.pid
+
+        # Set process priority to NORMAL/HIGH for full performance
+        try:
+            import psutil
+            proc = psutil.Process(pid)
+
+            if sys.platform == 'win32':
+                # Windows: Set to ABOVE_NORMAL or HIGH priority
+                proc.nice(psutil.ABOVE_NORMAL_PRIORITY_CLASS)  # Higher than normal
+            else:
+                # Unix/Linux: Set nice value to 0 (normal) or negative (higher priority)
+                proc.nice(0)  # Normal priority
+        except:
+            pass  # If psutil not available or permission denied, continue anyway
 
         return pid, str(log_file_path)
 
