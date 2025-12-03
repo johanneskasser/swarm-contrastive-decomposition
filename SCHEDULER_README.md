@@ -271,6 +271,38 @@ tasklist | findstr python
 - Use option `7` (View job log) to see detailed error messages
 - Ctrl+C during execution will gracefully stop the current job and mark it as failed
 
+### Retrying Failed Jobs
+
+If jobs fail, you can easily retry them using **option 9** (Retry failed jobs):
+
+1. Select option `9` from the main menu
+2. The scheduler will list all failed jobs with their log file paths
+3. Choose how to retry:
+   - **Option 1**: Retry all failed jobs at once
+   - **Option 2**: Select specific jobs by number (e.g., 1,3,5)
+   - **Option 3**: Cancel
+
+**What happens when you retry:**
+- Jobs are reset to `pending` status
+- Previous execution metadata (duration, return code, timestamps) is cleared
+- Jobs can then be run again using option 4 (Run all pending) or option 5 (Run single job)
+- Original log files are preserved for debugging
+
+**Example workflow:**
+```
+1. Run all pending jobs (some fail)
+2. Check logs (option 7) to understand failures
+3. Fix any issues (bad input files, configuration, etc.)
+4. Retry failed jobs (option 9)
+5. Run pending jobs again (option 4)
+```
+
+**Tip**: Before retrying, check the log file to understand why the job failed. Common issues include:
+- Missing or corrupted input files
+- Insufficient disk space
+- Configuration errors
+- Out of memory errors
+
 ## Tips
 
 1. **Path Auto-Completion**:

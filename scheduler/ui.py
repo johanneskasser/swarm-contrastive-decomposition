@@ -74,7 +74,7 @@ class SchedulerUI:
             self._clear_screen()
             self._display_menu()
 
-            choice = input("\nEnter choice (1-9): ").strip()
+            choice = input("\nEnter choice (1-10): ").strip()
 
             if choice == '1':
                 self._view_all_jobs()
@@ -93,10 +93,12 @@ class SchedulerUI:
             elif choice == '8':
                 self._clear_completed_jobs()
             elif choice == '9':
+                self._retry_failed_jobs()
+            elif choice == '10':
                 print("\nExiting scheduler. Goodbye!")
                 break
             else:
-                print("\nInvalid choice. Please enter a number between 1 and 9.")
+                print("\nInvalid choice. Please enter a number between 1 and 10.")
                 self._pause()
 
     def _clear_screen(self):
@@ -202,7 +204,8 @@ class SchedulerUI:
         print("  6. View job details")
         print("  7. View job log")
         print("  8. Clear completed jobs")
-        print("  9. Exit")
+        print("  9. Retry failed jobs")
+        print(" 10. Exit")
         print()
 
     def _view_all_jobs(self):
@@ -841,6 +844,98 @@ class SchedulerUI:
             print(f"\n✓ Removed {removed} job(s).")
         else:
             print("\nCancelled.")
+
+        self._pause()
+
+    def _retry_failed_jobs(self):
+        """Reset failed jobs to pending status so they can be run again."""
+        print("\n" + "=" * 80)
+        print("RETRY FAILED JOBS")
+        print("=" * 80)
+
+        failed_jobs = self.job_manager.list_jobs(status='failed')
+
+        if not failed_jobs:
+            print("\nNo failed jobs found.")
+            self._pause()
+            return
+
+        print(f"\nFound {len(failed_jobs)} failed job(s):")
+        for idx, job in enumerate(failed_jobs, 1):
+            print(f"  {idx}. {job['name']}")
+            if job.get('log_file'):
+                print(f"     Log: {job['log_file']}")
+
+        print("\nOptions:")
+        print("  1. Retry all failed jobs")
+        print("  2. Select specific jobs to retry")
+        print("  3. Cancel")
+
+        choice = input("\nEnter choice (1-3): ").strip()
+
+        jobs_to_retry = []
+
+        if choice == '1':
+            # Retry all failed jobs
+            jobs_to_retry = failed_jobs
+        elif choice == '2':
+            # Select specific jobs
+            print("\nEnter job numbers to retry (comma-separated, e.g., 1,3,5):")
+            selection = input("Jobs: ").strip()
+
+            try:
+                indices = [int(x.strip()) - 1 for x in selection.split(',')]
+                jobs_to_retry = [failed_jobs[i] for i in indices if 0 <= i < len(failed_jobs)]
+
+                if not jobs_to_retry:
+                    print("\nNo valid jobs selected.")
+                    self._pause()
+                    return
+            except (ValueError, IndexError):
+                print("\nInvalid selection.")
+                self._pause()
+                return
+        elif choice == '3':
+            print("\nCancelled.")
+            self._pause()
+            return
+        else:
+            print("\nInvalid choice.")
+            self._pause()
+            return
+
+        # Confirm retry
+        print(f"\nWill retry {len(jobs_to_retry)} job(s):")
+        for job in jobs_to_retry:
+            print(f"  - {job['name']}")
+
+        confirm = input(f"\nReset these jobs to 'pending' status? (y/n): ").strip().lower()
+
+        if confirm != 'y':
+            print("\nCancelled.")
+            self._pause()
+            return
+
+        # Reset jobs to pending
+        reset_count = 0
+        for job in jobs_to_retry:
+            try:
+                # Reset status to pending and clear execution metadata
+                self.job_manager.update_job_status(
+                    job['id'],
+                    'pending',
+                    started_at=None,
+                    completed_at=None,
+                    duration_seconds=None,
+                    return_code=None,
+                    pid=None
+                )
+                reset_count += 1
+            except Exception as e:
+                print(f"\n✗ Failed to reset job '{job['name']}': {str(e)}")
+
+        print(f"\n✓ Reset {reset_count} job(s) to 'pending' status.")
+        print("\nYou can now run them using option 4 (Run all pending jobs) or option 5 (Run single job).")
 
         self._pause()
 
