@@ -114,11 +114,13 @@ The scheduler offers three execution modes:
 - Perfect for maximum speed and efficiency
 
 #### Mode 2: Sequential Background
-- Jobs run **one at a time** in the background
+- Jobs run **one at a time** in the background via an **orchestrator process**
 - **Full CPU/GPU performance** for each job - no competition
-- You can **close the scheduler** and jobs continue running
+- You can **close the scheduler** and jobs continue running independently
+- The orchestrator monitors job completion and starts the next job automatically
 - Jobs wait for the previous one to finish before starting
 - Best for overnight processing with guaranteed sequential execution
+- Orchestrator log: `orchestrator_YYYYMMDD_HHMMSS.log`
 
 #### Mode 3: Parallel Background
 - All jobs start **immediately** in the background

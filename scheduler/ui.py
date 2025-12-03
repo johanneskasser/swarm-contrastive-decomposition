@@ -371,20 +371,15 @@ class SchedulerUI:
                 self._execute_job_foreground(job)
 
         elif mode == '2':
-            # Mode 2: Sequential Background - start jobs one-by-one in background
+            # Mode 2: Sequential Background - use orchestrator to manage jobs
             print("\n💡 Sequential Background Mode:")
             print("   - Jobs will run one at a time in the background")
             print("   - You can close the scheduler and jobs will continue")
-            print("   - Each job waits for the previous one to finish")
+            print("   - A background orchestrator will manage sequential execution")
             print()
 
-            for idx, job in enumerate(pending_jobs, 1):
-                print("\n" + "=" * 80)
-                print(f"[Job {idx}/{total_jobs}] {job['name']}")
-                print("=" * 80)
-
-                # Start job in background and wait for it to complete
-                self._execute_job_sequential_background(job, idx, total_jobs)
+            # Start orchestrator in background with all job IDs
+            self._start_orchestrator(pending_jobs)
 
         else:
             # Mode 3: Parallel Background - start all jobs immediately
@@ -581,6 +576,82 @@ class SchedulerUI:
                 'failed',
                 completed_at=datetime.now().isoformat()
             )
+
+    def _start_orchestrator(self, jobs):
+        """
+        Start the background orchestrator to manage sequential job execution.
+        The orchestrator runs independently and continues even if scheduler is closed.
+
+        Args:
+            jobs: List of job dictionaries to execute sequentially
+        """
+        import subprocess
+        import sys
+
+        if not jobs:
+            print("\nNo jobs to start.")
+            return
+
+        # Extract job IDs
+        job_ids = [job['id'] for job in jobs]
+
+        print(f"\nStarting background orchestrator for {len(job_ids)} job(s)...")
+        for idx, job in enumerate(jobs, 1):
+            print(f"  {idx}. {job['name']}")
+
+        # Get path to orchestrator script
+        orchestrator_path = Path(__file__).parent / 'orchestrator.py'
+
+        # Build command
+        python_exe = sys.executable
+        cmd = [python_exe, '-u', str(orchestrator_path)] + job_ids
+
+        # Create log file for orchestrator output
+        orchestrator_log = Path.cwd() / f"orchestrator_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+        try:
+            # Start orchestrator as detached background process
+            if sys.platform == 'win32':
+                # Windows: Use CREATE_NEW_PROCESS_GROUP and CREATE_NO_WINDOW
+                CREATE_NEW_PROCESS_GROUP = 0x00000200
+                CREATE_NO_WINDOW = 0x08000000
+
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=open(orchestrator_log, 'w', encoding='utf-8'),
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                    cwd=Path.cwd(),
+                    creationflags=CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
+                    close_fds=True
+                )
+            else:
+                # Unix/Linux/Mac: Use start_new_session
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=open(orchestrator_log, 'w', encoding='utf-8'),
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                    cwd=Path.cwd(),
+                    start_new_session=True,
+                    close_fds=True
+                )
+
+            orchestrator_pid = process.pid
+
+            print(f"\n✓ Orchestrator started successfully!")
+            print(f"  PID: {orchestrator_pid}")
+            print(f"  Log: {orchestrator_log}")
+            print(f"\nThe orchestrator will:")
+            print(f"  - Execute jobs one at a time in sequence")
+            print(f"  - Continue running even if you close this scheduler")
+            print(f"  - Monitor job completion and start next job automatically")
+            print(f"\nYou can safely close the scheduler now.")
+            print(f"Jobs will continue in the background.")
+
+        except Exception as e:
+            print(f"\n✗ Failed to start orchestrator: {str(e)}")
+            print("\nJobs were not started.")
 
     def _execute_job_sequential_background(self, job: dict, job_num: int, total_jobs: int):
         """
