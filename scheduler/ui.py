@@ -920,7 +920,8 @@ class SchedulerUI:
         reset_count = 0
         for job in jobs_to_retry:
             try:
-                # Reset status to pending and clear execution metadata
+                # Reset status to pending and clear ALL execution metadata
+                # This includes log_file so a new log will be created on retry
                 self.job_manager.update_job_status(
                     job['id'],
                     'pending',
@@ -928,7 +929,8 @@ class SchedulerUI:
                     completed_at=None,
                     duration_seconds=None,
                     return_code=None,
-                    pid=None
+                    pid=None,
+                    log_file=None
                 )
                 reset_count += 1
             except Exception as e:
