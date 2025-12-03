@@ -14,7 +14,7 @@ from utils.preprocessing import loadEMG_updConfig, extract_raw_emg_metadata, loa
 set_random_seed(seed=42)
 
 
-def train(path, grid_info=None, grid_suffix=""):
+def train(path, grid_info=None, grid_suffix="", output_folder=None):
     print(path)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
@@ -76,7 +76,7 @@ def train(path, grid_info=None, grid_suffix=""):
 
     if path.suffix == ".mat":
         mat = sio.loadmat(path)
-        mat, config = loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_measured_idx, bad_channels, grid_info=grid_info)
+        mat, config = loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_measured_idx, bad_channels, grid_info=grid_info, output_folder=output_folder)
         neural_data = (
             torch.from_numpy(mat["emg"]).t().to(device=device, dtype=torch.float32)
         )  # time, channels
@@ -195,7 +195,7 @@ if __name__ == "__main__":
                 ).with_suffix(".pkl")
 
                 # Train model for this grid
-                dictionary, _, mat, config = train(path, grid_info=grid_info, grid_suffix=f"_{grid_key}")
+                dictionary, _, mat, config = train(path, grid_info=grid_info, grid_suffix=f"_{grid_key}", output_folder=OUTPUT_PATH)
 
                 # Save results
                 save_results(output_path, dictionary)
@@ -216,7 +216,7 @@ if __name__ == "__main__":
 
             output_path = OUTPUT_PATH.joinpath(file_name).with_suffix(".pkl")
 
-            dictionary, _, mat, config = train(path)
+            dictionary, _, mat, config = train(path, output_folder=OUTPUT_PATH)
 
             save_results(output_path, dictionary)
             print(f"Saved results to {output_path}")

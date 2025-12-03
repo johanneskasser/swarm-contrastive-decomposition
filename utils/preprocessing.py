@@ -130,7 +130,7 @@ def extract_raw_emg_metadata(mat_path, config, mat_source='otb+'):
 
     return rawEMG_Channels, refSignal, fsamp, ied, extras
 
-def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_measured_idx, bad_channels = [], mat_source='otb+', n_std=7, sFrom=1, sTo=3, PLOTQ=False, grid_info=None):
+def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_measured_idx, bad_channels = [], mat_source='otb+', n_std=7, sFrom=1, sTo=3, PLOTQ=False, grid_info=None, output_folder=None):
     """
     Extract raw EMG data from source file and update decomposition configurations.
 
@@ -175,7 +175,114 @@ def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_
         all_channels = list(range(channel_range[0], channel_range[1]))
         # Filter out channels at indices specified in bad_channels
         good_channels = [ch for idx, ch in enumerate(all_channels) if idx not in bad_channels]
+        bad_channel_list = [ch for idx, ch in enumerate(all_channels) if idx in bad_channels]
         print(f"Good channels used:\n {good_channels}")
+        print(f"Bad channels excluded:\n {bad_channel_list}")
+
+        # Plot channel selection if grid_info was provided (hdsemg-select file detected)
+        if grid_info is not None:
+            import matplotlib.pyplot as plt
+            import numpy as np
+            from datetime import datetime
+
+            print("\n" + "="*80)
+            print("CHANNEL SELECTION VISUALIZATION")
+            print("="*80)
+            print(f"Grid: {grid_info.get('grid_key', 'unknown')}")
+            print(f"Channel range: {channel_range[0]} to {channel_range[1]-1}")
+            print(f"Good channels: {len(good_channels)}/{len(all_channels)}")
+            print(f"Bad channels: {len(bad_channel_list)}/{len(all_channels)}")
+
+            # Get entire signal for plotting
+            fsamp = int(mat['SamplingFrequency'][0][0])
+            time_window = mat['Data'].shape[0]  # All data
+            time_axis = np.arange(time_window) / fsamp
+            print(f"Plotting entire signal: {time_axis[-1]:.2f} seconds ({time_window} samples)")
+
+            # Create figure with subplots
+            fig, axes = plt.subplots(2, 1, figsize=(14, 10))
+            fig.suptitle(f'Channel Selection: {grid_info.get("grid_key", "unknown")} Grid', fontsize=14, fontweight='bold')
+
+            # --- Plot 1: GOOD CHANNELS (used for decomposition) ---
+            ax1 = axes[0]
+            ax1.set_title(f'✓ GOOD CHANNELS (Selected, n={len(good_channels)})', color='green', fontweight='bold')
+
+            if len(good_channels) > 0:
+                # Normalize and offset channels for visibility
+                offset_scale = 0
+                for i, ch_idx in enumerate(good_channels):
+                    signal = mat['Data'][:time_window, ch_idx]
+                    # Normalize signal
+                    signal_norm = (signal - signal.mean()) / (signal.std() + 1e-9)
+                    # Plot with offset
+                    ax1.plot(time_axis, signal_norm + offset_scale, 'g-', linewidth=0.5, alpha=0.7)
+                    offset_scale -= 3  # Stack channels
+
+                ax1.set_xlabel('Time (s)')
+                ax1.set_ylabel('Normalized Amplitude (offset per channel)')
+                ax1.set_xlim([0, time_axis[-1]])
+                ax1.grid(True, alpha=0.3)
+                ax1.text(0.02, 0.98, f'Channels: {good_channels[0]} to {good_channels[-1]}',
+                        transform=ax1.transAxes, verticalalignment='top',
+                        bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.5))
+            else:
+                ax1.text(0.5, 0.5, 'No good channels found!',
+                        transform=ax1.transAxes, ha='center', va='center',
+                        fontsize=16, color='red', fontweight='bold')
+                ax1.set_xlim([0, 1])
+                ax1.set_ylim([0, 1])
+
+            # --- Plot 2: BAD CHANNELS (excluded from decomposition) ---
+            ax2 = axes[1]
+            ax2.set_title(f'✗ BAD CHANNELS (Excluded, n={len(bad_channel_list)})', color='red', fontweight='bold')
+
+            if len(bad_channel_list) > 0:
+                # Normalize and offset channels for visibility
+                offset_scale = 0
+                for i, ch_idx in enumerate(bad_channel_list):
+                    signal = mat['Data'][:time_window, ch_idx]
+                    # Normalize signal
+                    signal_norm = (signal - signal.mean()) / (signal.std() + 1e-9)
+                    # Plot with offset
+                    ax2.plot(time_axis, signal_norm + offset_scale, 'r-', linewidth=0.5, alpha=0.7)
+                    offset_scale -= 3  # Stack channels
+
+                ax2.set_xlabel('Time (s)')
+                ax2.set_ylabel('Normalized Amplitude (offset per channel)')
+                ax2.set_xlim([0, time_axis[-1]])
+                ax2.grid(True, alpha=0.3)
+                ax2.text(0.02, 0.98, f'Channels: {bad_channel_list[0]} to {bad_channel_list[-1]}',
+                        transform=ax2.transAxes, verticalalignment='top',
+                        bbox=dict(boxstyle='round', facecolor='lightcoral', alpha=0.5))
+            else:
+                ax2.text(0.5, 0.5, 'No bad channels (all channels selected)',
+                        transform=ax2.transAxes, ha='center', va='center',
+                        fontsize=14, color='green')
+                ax2.set_xlim([0, 1])
+                ax2.set_ylim([0, 1])
+
+            plt.tight_layout()
+
+            # Save figure to output folder if provided
+            if output_folder is not None:
+                from pathlib import Path
+                output_folder = Path(output_folder)
+                output_folder.mkdir(parents=True, exist_ok=True)
+
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                grid_key = grid_info.get('grid_key', 'unknown')
+                plot_filename = f"channel_selection_{grid_key}_{timestamp}.png"
+                plot_path = output_folder / plot_filename
+
+                fig.savefig(plot_path, dpi=150, bbox_inches='tight')
+                print(f"\n✓ Channel selection plot saved to: {plot_path}")
+
+            plt.show()
+
+            print("="*80)
+            print("Close the plot window to continue...")
+            print("="*80 + "\n")
+
         fsamp = int(mat['SamplingFrequency'][0][0])
         ref_path_target = mat['Data'][:, ref_path_target_idx]
         ref_path_measured = mat['Data'][:, ref_path_measured_idx]
