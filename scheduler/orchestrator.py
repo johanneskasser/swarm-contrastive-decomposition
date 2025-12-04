@@ -92,36 +92,62 @@ def run_orchestrator(job_ids):
                 check_interval = 10  # Check every 10 seconds
                 while True:
                     try:
+                        # Check if process is a zombie or terminated
+                        status = process.status()
+                        if status == psutil.STATUS_ZOMBIE:
+                            log_message(f"Job completed (PID {pid} is zombie, waiting for exit code)")
+                            # Wait for the process to be fully reaped
+                            process.wait(timeout=5)
+                            break
+
                         if not process.is_running():
                             log_message(f"Job completed (PID {pid} terminated)")
                             break
+
                         time.sleep(check_interval)
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         log_message(f"Job completed (PID {pid} no longer accessible)")
+                        break
+                    except psutil.TimeoutExpired:
+                        log_message(f"Job completed (PID {pid} zombie cleanup timeout)")
                         break
 
             except ImportError:
                 log_message("WARNING: psutil not available, cannot monitor job. Assuming success after 5 seconds.")
                 time.sleep(5)
 
-            # Determine final status from log file
+            # Determine final status from process exit code and log file
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
 
+            # Try to get exit code from process
             return_code = None
-            if log_file and Path(log_file).exists():
+            try:
+                import psutil
+                proc = psutil.Process(pid)
+                return_code = proc.wait(timeout=1)
+            except:
+                pass
+
+            # If we couldn't get exit code from process, check log file
+            if return_code is None and log_file and Path(log_file).exists():
                 try:
                     with open(log_file, 'r', encoding='utf-8') as f:
                         content = f.read()
                         if 'Status: SUCCESS' in content:
                             return_code = 0
-                            final_status = 'completed'
-                        else:
+                        elif 'Traceback' in content or 'Error' in content:
                             return_code = 1
-                            final_status = 'failed'
                 except:
-                    final_status = 'completed'  # Assume success if we can't read log
+                    pass
+
+            # Determine final status
+            if return_code == 0:
+                final_status = 'completed'
+            elif return_code is not None:
+                final_status = 'failed'
             else:
+                # Couldn't determine exit code, assume success
                 final_status = 'completed'
 
             # Update job status
