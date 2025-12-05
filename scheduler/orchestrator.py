@@ -84,6 +84,9 @@ def run_orchestrator(job_ids):
             # Wait for job to complete
             log_message(f"Waiting for job to complete...")
 
+            # Initialize exit_code outside try block for proper scope
+            exit_code = None
+
             try:
                 import psutil
                 process = psutil.Process(pid)
@@ -96,8 +99,8 @@ def run_orchestrator(job_ids):
                         status = process.status()
                         if status == psutil.STATUS_ZOMBIE:
                             log_message(f"Job completed (PID {pid} is zombie, waiting for exit code)")
-                            # Wait for the process to be fully reaped
-                            process.wait(timeout=5)
+                            # Wait for the process to be fully reaped and capture exit code
+                            exit_code = process.wait(timeout=5)
                             break
 
                         if not process.is_running():
@@ -120,14 +123,15 @@ def run_orchestrator(job_ids):
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
 
-            # Try to get exit code from process
-            return_code = None
-            try:
-                import psutil
-                proc = psutil.Process(pid)
-                return_code = proc.wait(timeout=1)
-            except:
-                pass
+            # Try to get exit code from process (may have been captured above)
+            return_code = exit_code
+            if return_code is None:
+                try:
+                    import psutil
+                    proc = psutil.Process(pid)
+                    return_code = proc.wait(timeout=1)
+                except:
+                    pass
 
             # If we couldn't get exit code from process, check log file
             if return_code is None and log_file and Path(log_file).exists():
