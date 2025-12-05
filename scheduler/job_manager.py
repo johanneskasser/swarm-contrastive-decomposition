@@ -54,9 +54,14 @@ class JobManager:
         """
         Load all jobs from configuration.
 
+        Always reloads from file to ensure fresh data, especially when
+        external processes (like the orchestrator) update job statuses.
+
         Returns:
             List of job dictionaries
         """
+        # Reload from file to get latest changes
+        self.jobs_data = self._load_or_create_config()
         return self.jobs_data.get("jobs", [])
 
     def add_job(self, name: str, input_path: str, output_path: str,
