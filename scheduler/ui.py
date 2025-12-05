@@ -1052,29 +1052,57 @@ class SchedulerUI:
             print("\n" + "-" * 80)
             print("EXAMPLE DISCORD WEBHOOK:")
             print()
-            print('curl -H "Content-Type: application/json" \\')
-            print('     -X POST \\')
-            print('     -d \'{"content": "Jobs sind fertig!!"}\' \\')
-            print('     https://discord.com/api/webhooks/YOUR_WEBHOOK_URL')
+            print('curl -H "Content-Type: application/json" -X POST -d \'{"content": "Jobs done!"}\' https://discord.com/api/webhooks/YOUR_URL')
+            print()
+            print("TIPS:")
+            print("  - Use single quotes for JSON: -d '{\"content\": \"message\"}'")
+            print("  - For emojis, type them directly or use Unicode")
+            print("  - You can enter multi-line (backslashes optional)")
             print("-" * 80)
             print()
-            print("Enter your hook command (or press Enter to cancel):")
-            print()
 
-            # Read multi-line input
-            lines = []
-            print("(Enter an empty line when done)")
-            while True:
-                line = input()
-                if not line:
-                    break
-                lines.append(line)
+            # Ask for input mode
+            print("Input mode:")
+            print("  1. Single line (recommended for curl)")
+            print("  2. Multi-line")
+            mode = input("\nChoose mode (1/2) [1]: ").strip() or "1"
 
-            if lines:
-                command = ' '.join(lines)
+            command = None
+
+            if mode == '1':
+                # Single line input
+                print("\nEnter your hook command:")
+                command = input("> ").strip()
+
+            elif mode == '2':
+                # Multi-line input
+                print("\nEnter your hook command (empty line when done):")
+                lines = []
+                while True:
+                    line = input()
+                    if not line:
+                        break
+                    lines.append(line)
+
+                if lines:
+                    # Process lines: remove trailing backslashes and whitespace
+                    processed_lines = []
+                    for line in lines:
+                        line = line.strip()
+                        if line.endswith('\\'):
+                            line = line[:-1].strip()
+                        processed_lines.append(line)
+                    command = ' '.join(processed_lines)
+
+            else:
+                print("\nInvalid mode. Cancelled.")
+                self._pause()
+                return
+
+            if command:
                 self.job_manager.set_completion_hook(command)
-                print(f"\nHook configured successfully!")
-                print(f"Command: {command}")
+                print(f"\n✓ Hook configured successfully!")
+                print(f"\nCommand:\n{command}")
             else:
                 print("\nCancelled.")
 
