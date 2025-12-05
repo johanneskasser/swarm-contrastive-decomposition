@@ -172,6 +172,31 @@ def run_orchestrator(job_ids):
 
     log_message(f"Orchestrator finished. All {len(job_ids)} job(s) processed.")
 
+    # Execute completion hook if configured
+    completion_hook = job_manager.get_completion_hook()
+    if completion_hook:
+        log_message(f"Executing completion hook: {completion_hook}")
+        try:
+            import subprocess
+            result = subprocess.run(
+                completion_hook,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            log_message(f"Hook completed with exit code: {result.returncode}")
+            if result.stdout:
+                log_message(f"Hook output: {result.stdout.strip()}")
+            if result.stderr:
+                log_message(f"Hook errors: {result.stderr.strip()}")
+        except subprocess.TimeoutExpired:
+            log_message("ERROR: Completion hook timed out (60 seconds)")
+        except Exception as e:
+            log_message(f"ERROR executing completion hook: {str(e)}")
+    else:
+        log_message("No completion hook configured.")
+
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:

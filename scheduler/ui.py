@@ -74,7 +74,7 @@ class SchedulerUI:
             self._clear_screen()
             self._display_menu()
 
-            choice = input("\nEnter choice (1-10): ").strip()
+            choice = input("\nEnter choice (1-11): ").strip()
 
             if choice == '1':
                 self._view_all_jobs()
@@ -95,10 +95,12 @@ class SchedulerUI:
             elif choice == '9':
                 self._retry_failed_jobs()
             elif choice == '10':
+                self._configure_completion_hook()
+            elif choice == '11':
                 print("\nExiting scheduler. Goodbye!")
                 break
             else:
-                print("\nInvalid choice. Please enter a number between 1 and 10.")
+                print("\nInvalid choice. Please enter a number between 1 and 11.")
                 self._pause()
 
     def _clear_screen(self):
@@ -205,7 +207,8 @@ class SchedulerUI:
         print("  7. View job log")
         print("  8. Clear completed jobs")
         print("  9. Retry failed jobs")
-        print(" 10. Exit")
+        print(" 10. Configure completion hook")
+        print(" 11. Exit")
         print()
 
     def _view_all_jobs(self):
@@ -1009,6 +1012,121 @@ class SchedulerUI:
 
         print(f"\n✓ Reset {reset_count} job(s) to 'pending' status.")
         print("\nYou can now run them using option 4 (Run all pending jobs) or option 5 (Run single job).")
+
+        self._pause()
+
+    def _configure_completion_hook(self):
+        """Configure the command to run after all jobs complete."""
+        print("\n" + "=" * 80)
+        print("CONFIGURE COMPLETION HOOK")
+        print("=" * 80)
+        print()
+        print("A completion hook is a shell command that runs automatically")
+        print("after ALL jobs finish (when using Sequential Background mode).")
+        print()
+        print("Example uses:")
+        print("  - Send Discord/Slack notification")
+        print("  - Trigger another script")
+        print("  - Send email notification")
+        print()
+
+        # Show current hook
+        current_hook = self.job_manager.get_completion_hook()
+        if current_hook:
+            print(f"Current hook: {current_hook}")
+        else:
+            print("Current hook: (not set)")
+        print()
+
+        print("Options:")
+        print("  1. Set new hook command")
+        print("  2. Test current hook")
+        print("  3. Disable hook")
+        print("  4. Cancel")
+        print()
+
+        choice = input("Enter choice (1-4): ").strip()
+
+        if choice == '1':
+            # Set new hook
+            print("\n" + "-" * 80)
+            print("EXAMPLE DISCORD WEBHOOK:")
+            print()
+            print('curl -H "Content-Type: application/json" \\')
+            print('     -X POST \\')
+            print('     -d \'{"content": "Jobs sind fertig!!"}\' \\')
+            print('     https://discord.com/api/webhooks/YOUR_WEBHOOK_URL')
+            print("-" * 80)
+            print()
+            print("Enter your hook command (or press Enter to cancel):")
+            print()
+
+            # Read multi-line input
+            lines = []
+            print("(Enter an empty line when done)")
+            while True:
+                line = input()
+                if not line:
+                    break
+                lines.append(line)
+
+            if lines:
+                command = ' '.join(lines)
+                self.job_manager.set_completion_hook(command)
+                print(f"\nHook configured successfully!")
+                print(f"Command: {command}")
+            else:
+                print("\nCancelled.")
+
+        elif choice == '2':
+            # Test current hook
+            if not current_hook:
+                print("\nNo hook configured to test.")
+            else:
+                print(f"\nTesting hook: {current_hook}")
+                confirm = input("Execute this command now? (y/n): ").strip().lower()
+
+                if confirm == 'y':
+                    print("\nExecuting hook...")
+                    print("-" * 80)
+                    try:
+                        import subprocess
+                        result = subprocess.run(
+                            current_hook,
+                            shell=True,
+                            capture_output=True,
+                            text=True,
+                            timeout=30
+                        )
+                        print(f"Exit code: {result.returncode}")
+                        if result.stdout:
+                            print(f"Output:\n{result.stdout}")
+                        if result.stderr:
+                            print(f"Errors:\n{result.stderr}")
+                    except subprocess.TimeoutExpired:
+                        print("Hook timed out (30 seconds)")
+                    except Exception as e:
+                        print(f"Error executing hook: {str(e)}")
+                    print("-" * 80)
+                else:
+                    print("\nCancelled.")
+
+        elif choice == '3':
+            # Disable hook
+            if current_hook:
+                confirm = input("\nAre you sure you want to disable the hook? (y/n): ").strip().lower()
+                if confirm == 'y':
+                    self.job_manager.set_completion_hook(None)
+                    print("\nHook disabled.")
+                else:
+                    print("\nCancelled.")
+            else:
+                print("\nNo hook configured.")
+
+        elif choice == '4':
+            print("\nCancelled.")
+        else:
+            print("\nInvalid choice.")
 
         self._pause()
 

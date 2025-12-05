@@ -42,7 +42,10 @@ class JobManager:
         """Create default configuration structure."""
         return {
             "version": "1.0",
-            "jobs": []
+            "jobs": [],
+            "hooks": {
+                "on_all_jobs_completed": None
+            }
         }
 
     def save_jobs(self):
@@ -284,3 +287,28 @@ class JobManager:
             Unique job ID string
         """
         return f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+    def set_completion_hook(self, command: Optional[str]):
+        """
+        Set the command to execute after all jobs are completed.
+
+        Args:
+            command: Shell command to execute, or None to disable hook
+        """
+        if "hooks" not in self.jobs_data:
+            self.jobs_data["hooks"] = {}
+
+        self.jobs_data["hooks"]["on_all_jobs_completed"] = command
+        self.save_jobs()
+
+    def get_completion_hook(self) -> Optional[str]:
+        """
+        Get the completion hook command.
+
+        Returns:
+            Hook command string or None if not set
+        """
+        if "hooks" not in self.jobs_data:
+            return None
+
+        return self.jobs_data["hooks"].get("on_all_jobs_completed")
