@@ -263,8 +263,8 @@ tasklist | findstr python
 
 - **⏸ Pending**: Job is queued but not yet started
 - **▶ Running**: Job is currently executing in the background
-- **✓ Completed**: Job finished successfully (exit code 0)
-- **✗ Failed**: Job failed or was interrupted
+- **[OK] Completed**: Job finished successfully (exit code 0)
+- **[X] Failed**: Job failed or was interrupted
 
 ## Error Handling
 

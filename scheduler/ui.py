@@ -275,7 +275,7 @@ class SchedulerUI:
             # Add job
             job = self.job_manager.add_job(name, input_path, output_path, description)
 
-            print(f"\n✓ Job added successfully! (ID: {job['id']})")
+            print(f"\n[OK] Job added successfully! (ID: {job['id']})")
 
         except ValueError as e:
             print(f"\nError: {str(e)}")
@@ -317,7 +317,7 @@ class SchedulerUI:
 
                 if confirm == 'y':
                     self.job_manager.remove_job(job['id'])
-                    print(f"\n✓ Job '{job['name']}' removed successfully.")
+                    print(f"\n[OK] Job '{job['name']}' removed successfully.")
                 else:
                     print("\nCancelled.")
             else:
@@ -503,13 +503,13 @@ class SchedulerUI:
             end_time = datetime.now()
             if return_code == 0:
                 final_status = 'completed'
-                status_text = "✓ SUCCESS"
+                status_text = "[OK] SUCCESS"
             elif return_code == -1:
                 final_status = 'failed'
-                status_text = "✗ INTERRUPTED"
+                status_text = "[X] INTERRUPTED"
             else:
                 final_status = 'failed'
-                status_text = f"✗ FAILED (exit code: {return_code})"
+                status_text = f"[X] FAILED (exit code: {return_code})"
 
             # Update job status
             self.job_manager.update_job_status(
@@ -530,7 +530,7 @@ class SchedulerUI:
             print(f"Log: {log_file}")
 
         except Exception as e:
-            print(f"\n✗ Failed to execute job: {str(e)}")
+            print(f"\n[X] Failed to execute job: {str(e)}")
             self.job_manager.update_job_status(
                 job_id,
                 'failed',
@@ -566,14 +566,14 @@ class SchedulerUI:
                 pid=pid
             )
 
-            print(f"\n✓ Job started in background")
+            print(f"\n[OK] Job started in background")
             print(f"  PID: {pid}")
             print(f"  Log: {log_file}")
             print(f"\nThe job will continue running even if you close the scheduler.")
             print(f"You can monitor progress by viewing the log file (option 7).")
 
         except Exception as e:
-            print(f"\n✗ Failed to start job: {str(e)}")
+            print(f"\n[X] Failed to start job: {str(e)}")
             self.job_manager.update_job_status(
                 job_id,
                 'failed',
@@ -642,7 +642,7 @@ class SchedulerUI:
 
             orchestrator_pid = process.pid
 
-            print(f"\n✓ Orchestrator started successfully!")
+            print(f"\n[OK] Orchestrator started successfully!")
             print(f"  PID: {orchestrator_pid}")
             print(f"  Log: {orchestrator_log}")
             print(f"\nThe orchestrator will:")
@@ -653,7 +653,7 @@ class SchedulerUI:
             print(f"Jobs will continue in the background.")
 
         except Exception as e:
-            print(f"\n✗ Failed to start orchestrator: {str(e)}")
+            print(f"\n[X] Failed to start orchestrator: {str(e)}")
             print("\nJobs were not started.")
 
     def _execute_job_sequential_background(self, job: dict, job_num: int, total_jobs: int):
@@ -670,7 +670,7 @@ class SchedulerUI:
         try:
             import psutil
         except ImportError:
-            print("\n✗ psutil not installed. Sequential background mode requires psutil.")
+            print("\n[X] psutil not installed. Sequential background mode requires psutil.")
             print("  Install with: pip install psutil")
             print("\n  Falling back to parallel background mode...")
             self._execute_job(job)
@@ -697,7 +697,7 @@ class SchedulerUI:
                 pid=pid
             )
 
-            print(f"\n✓ Job started in background")
+            print(f"\n[OK] Job started in background")
             print(f"  PID: {pid}")
             print(f"  Log: {log_file}")
             print(f"\nWaiting for job to complete before starting next job...")
@@ -744,7 +744,7 @@ class SchedulerUI:
                     pass
 
             final_status = 'completed' if return_code == 0 else 'failed'
-            status_text = "✓ SUCCESS" if return_code == 0 else "✗ FAILED"
+            status_text = "[OK] SUCCESS" if return_code == 0 else "[X] FAILED"
 
             self.job_manager.update_job_status(
                 job_id,
@@ -763,7 +763,7 @@ class SchedulerUI:
             print(f"Log: {log_file}")
 
         except Exception as e:
-            print(f"\n✗ Failed to execute job: {str(e)}")
+            print(f"\n[X] Failed to execute job: {str(e)}")
             self.job_manager.update_job_status(
                 job_id,
                 'failed',
@@ -915,7 +915,7 @@ class SchedulerUI:
         confirm = input(f"\nRemove these jobs? (y/n): ").strip().lower()
         if confirm == 'y':
             removed = self.job_manager.clear_completed_jobs()
-            print(f"\n✓ Removed {removed} job(s).")
+            print(f"\n[OK] Removed {removed} job(s).")
         else:
             print("\nCancelled.")
 
@@ -1008,9 +1008,9 @@ class SchedulerUI:
                 )
                 reset_count += 1
             except Exception as e:
-                print(f"\n✗ Failed to reset job '{job['name']}': {str(e)}")
+                print(f"\n[X] Failed to reset job '{job['name']}': {str(e)}")
 
-        print(f"\n✓ Reset {reset_count} job(s) to 'pending' status.")
+        print(f"\n[OK] Reset {reset_count} job(s) to 'pending' status.")
         print("\nYou can now run them using option 4 (Run all pending jobs) or option 5 (Run single job).")
 
         self._pause()
@@ -1101,7 +1101,7 @@ class SchedulerUI:
 
             if command:
                 self.job_manager.set_completion_hook(command)
-                print(f"\n✓ Hook configured successfully!")
+                print(f"\n[OK] Hook configured successfully!")
                 print(f"\nCommand:\n{command}")
             else:
                 print("\nCancelled.")
@@ -1163,8 +1163,8 @@ class SchedulerUI:
         status_map = {
             'pending': '⏸ Pending',
             'running': '▶ Running',
-            'completed': '✓ Completed',
-            'failed': '✗ Failed'
+            'completed': '[OK] Completed',
+            'failed': '[X] Failed'
         }
         return status_map.get(status, status)
 

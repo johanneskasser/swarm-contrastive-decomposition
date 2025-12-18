@@ -205,7 +205,7 @@ def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_
 
             # --- Plot 1: GOOD CHANNELS (used for decomposition) ---
             ax1 = axes[0]
-            ax1.set_title(f'✓ GOOD CHANNELS (Selected, n={len(good_channels)})', color='green', fontweight='bold')
+            ax1.set_title(f'[OK] GOOD CHANNELS (Selected, n={len(good_channels)})', color='green', fontweight='bold')
 
             if len(good_channels) > 0:
                 # Normalize and offset channels for visibility
@@ -234,7 +234,7 @@ def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_
 
             # --- Plot 2: BAD CHANNELS (excluded from decomposition) ---
             ax2 = axes[1]
-            ax2.set_title(f'✗ BAD CHANNELS (Excluded, n={len(bad_channel_list)})', color='red', fontweight='bold')
+            ax2.set_title(f'[X] BAD CHANNELS (Excluded, n={len(bad_channel_list)})', color='red', fontweight='bold')
 
             if len(bad_channel_list) > 0:
                 # Normalize and offset channels for visibility
@@ -275,7 +275,7 @@ def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_
                 plot_path = output_folder / plot_filename
 
                 fig.savefig(plot_path, dpi=150, bbox_inches='tight')
-                print(f"\n✓ Channel selection plot saved to: {plot_path}")
+                print(f"\n[OK] Channel selection plot saved to: {plot_path}")
 
             plt.show()
 
