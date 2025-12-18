@@ -426,6 +426,65 @@ def get_grids_from_json(json_data):
 
     return grids
 
+def extract_muscle_name_from_description(description):
+    """
+    Extract muscle name from OTBiolab+ description string for use in filenames.
+
+    Args:
+        description (str): Description string from .mat file (e.g., "Novecento+ (179 - 210) HD10MM0408 ch1 [MUSCLE:Rectus Femoris Muscle Right]")
+
+    Returns:
+        str or None: Sanitized muscle name suitable for filenames, or None if not found
+
+    Examples:
+        >>> extract_muscle_name_from_description("Novecento+ (179 - 210) HD10MM0408 ch1 [MUSCLE:Rectus Femoris Muscle Right]")
+        'RectusFemurisMuscleRight'
+        >>> extract_muscle_name_from_description("(Biceps Brachii) - some - info")
+        'BicepsBrachii'
+    """
+    if description is None or description == '':
+        return None
+
+    muscle_name = None
+
+    # Try to extract from [MUSCLE:...] tag first (most reliable)
+    if '[MUSCLE:' in description:
+        try:
+            muscle_name = description.split('[MUSCLE:')[1].split(']')[0].strip()
+        except IndexError:
+            pass
+
+    # Fallback: try to extract from parentheses at the beginning
+    if muscle_name is None and description.startswith('('):
+        try:
+            muscle_name = description.split('(')[1].split(')')[0].strip()
+        except IndexError:
+            pass
+
+    # Fallback: try to extract from " - " separated format (first part after removing device name)
+    if muscle_name is None and ' - ' in description:
+        try:
+            parts = description.split(' - ')
+            if len(parts) > 0:
+                # Remove device name prefix if present
+                first_part = parts[0].strip()
+                if '(' in first_part:
+                    muscle_name = first_part.split('(')[1].split(')')[0].strip()
+        except IndexError:
+            pass
+
+    # Sanitize for filename (remove spaces, special characters)
+    if muscle_name:
+        # Remove "Muscle", "Left", "Right" words and common connectors for shorter names
+        muscle_name = muscle_name.replace(' Muscle', '')
+        # Remove extra spaces and convert to CamelCase
+        muscle_name = ''.join(word.capitalize() for word in muscle_name.split())
+        # Remove any remaining special characters
+        muscle_name = ''.join(c for c in muscle_name if c.isalnum() or c in ['_', '-'])
+        return muscle_name if muscle_name else None
+
+    return None
+
 def get_good_channels_from_grid(grid_info):
     """
     Extract good (selected) channels from a grid.

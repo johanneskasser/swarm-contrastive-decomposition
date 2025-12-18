@@ -189,9 +189,33 @@ if __name__ == "__main__":
                 print(f"Processing grid {grid_idx + 1}/{len(grids)}: {grid_key}")
                 print('-'*80)
 
-                # Create output path with grid suffix
+                # Try to extract muscle name from description for filename
+                muscle_name = None
+                try:
+                    from utils.preprocessing import extract_muscle_name_from_description
+                    mat_data = sio.loadmat(path)
+                    channel_range = [
+                        min(ch['channel_index'] for ch in grid_info['channels']),
+                        max(ch['channel_index'] for ch in grid_info['channels']) + 1
+                    ]
+                    if 'Description' in mat_data and len(mat_data['Description']) > channel_range[0]:
+                        description = mat_data['Description'][channel_range[0]][0][0]
+                        if isinstance(description, np.ndarray):
+                            description = str(description[0]) if description.size > 0 else str(description)
+                        muscle_name = extract_muscle_name_from_description(description)
+                        if muscle_name:
+                            print(f"Muscle detected: {muscle_name}")
+                except Exception as e:
+                    print(f"Warning: Could not extract muscle name: {e}")
+
+                # Create output path with grid suffix and optional muscle name
+                filename_base = file_name.replace('.mat', '')
+                if muscle_name:
+                    filename_suffix = f'_{grid_key}_{muscle_name}'
+                else:
+                    filename_suffix = f'_{grid_key}'
                 output_path = OUTPUT_PATH.joinpath(
-                    file_name.replace('.mat', f'_{grid_key}')
+                    f'{filename_base}{filename_suffix}'
                 ).with_suffix(".pkl")
 
                 # Train model for this grid
