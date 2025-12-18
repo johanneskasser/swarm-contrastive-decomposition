@@ -199,6 +199,9 @@ def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_
             time_axis = np.arange(time_window) / fsamp
             print(f"Plotting entire signal: {time_axis[-1]:.2f} seconds ({time_window} samples)")
 
+            # Get reference signal (performed path)
+            ref_signal = mat['Data'][:time_window, ref_path_measured_idx]
+
             # Create figure with subplots
             fig, axes = plt.subplots(2, 1, figsize=(14, 10))
             fig.suptitle(f'Channel Selection: {grid_info.get("grid_key", "unknown")} Grid', fontsize=14, fontweight='bold')
@@ -215,13 +218,26 @@ def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_
                     # Normalize signal
                     signal_norm = (signal - signal.mean()) / (signal.std() + 1e-9)
                     # Plot with offset
-                    ax1.plot(time_axis, signal_norm + offset_scale, 'g-', linewidth=0.5, alpha=0.7)
+                    ax1.plot(time_axis, signal_norm + offset_scale, 'g-', linewidth=0.5, alpha=0.7, label='EMG Channels' if i == 0 else '')
                     offset_scale -= 3  # Stack channels
 
                 ax1.set_xlabel('Time (s)')
-                ax1.set_ylabel('Normalized Amplitude (offset per channel)')
+                ax1.set_ylabel('Normalized Amplitude (offset per channel)', color='green')
                 ax1.set_xlim([0, time_axis[-1]])
                 ax1.grid(True, alpha=0.3)
+                ax1.tick_params(axis='y', labelcolor='green')
+
+                # Add reference signal on secondary y-axis
+                ax1_ref = ax1.twinx()
+                ax1_ref.plot(time_axis, ref_signal, 'c-', linewidth=2, alpha=0.8, label='Reference Path')
+                ax1_ref.set_ylabel('Reference Signal (Performed Path)', color='cyan')
+                ax1_ref.tick_params(axis='y', labelcolor='cyan')
+
+                # Add legend
+                lines1, labels1 = ax1.get_legend_handles_labels()
+                lines2, labels2 = ax1_ref.get_legend_handles_labels()
+                ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
+
                 ax1.text(0.02, 0.98, f'Channels: {good_channels[0]} to {good_channels[-1]}',
                         transform=ax1.transAxes, verticalalignment='top',
                         bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.5))
@@ -244,13 +260,26 @@ def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_
                     # Normalize signal
                     signal_norm = (signal - signal.mean()) / (signal.std() + 1e-9)
                     # Plot with offset
-                    ax2.plot(time_axis, signal_norm + offset_scale, 'r-', linewidth=0.5, alpha=0.7)
+                    ax2.plot(time_axis, signal_norm + offset_scale, 'r-', linewidth=0.5, alpha=0.7, label='EMG Channels' if i == 0 else '')
                     offset_scale -= 3  # Stack channels
 
                 ax2.set_xlabel('Time (s)')
-                ax2.set_ylabel('Normalized Amplitude (offset per channel)')
+                ax2.set_ylabel('Normalized Amplitude (offset per channel)', color='red')
                 ax2.set_xlim([0, time_axis[-1]])
                 ax2.grid(True, alpha=0.3)
+                ax2.tick_params(axis='y', labelcolor='red')
+
+                # Add reference signal on secondary y-axis
+                ax2_ref = ax2.twinx()
+                ax2_ref.plot(time_axis, ref_signal, 'c-', linewidth=2, alpha=0.8, label='Reference Path')
+                ax2_ref.set_ylabel('Reference Signal (Performed Path)', color='cyan')
+                ax2_ref.tick_params(axis='y', labelcolor='cyan')
+
+                # Add legend
+                lines1, labels1 = ax2.get_legend_handles_labels()
+                lines2, labels2 = ax2_ref.get_legend_handles_labels()
+                ax2.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
+
                 ax2.text(0.02, 0.98, f'Channels: {bad_channel_list[0]} to {bad_channel_list[-1]}',
                         transform=ax2.transAxes, verticalalignment='top',
                         bbox=dict(boxstyle='round', facecolor='lightcoral', alpha=0.5))
@@ -260,6 +289,13 @@ def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_
                         fontsize=14, color='green')
                 ax2.set_xlim([0, 1])
                 ax2.set_ylim([0, 1])
+
+                # Still show reference signal even if no bad channels
+                ax2_ref = ax2.twinx()
+                ax2_ref.plot(time_axis, ref_signal, 'c-', linewidth=2, alpha=0.8, label='Reference Path')
+                ax2_ref.set_ylabel('Reference Signal (Performed Path)', color='cyan')
+                ax2_ref.tick_params(axis='y', labelcolor='cyan')
+                ax2_ref.legend(loc='upper right')
 
             plt.tight_layout()
 

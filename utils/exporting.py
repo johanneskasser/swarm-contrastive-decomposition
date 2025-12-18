@@ -94,30 +94,50 @@ def export_to_openhdemg_json(config, out_path, rawEMG_Channels, refSignal, ied, 
             decomp = pickle.load(f)
     except FileNotFoundError:
         raise FileNotFoundError(f"Decomposition results file not found: {out_path}")
-    
+
     # Allocate structure
     decompfile = allocate_openhdemg_file_structure()
 
-    # Populate structured dictionary
-    decompfile['SOURCE'] = device_from
-    decompfile['FILENAME'] = fn
-    decompfile['RAW_SIGNAL'] = rawEMG_Channels
-    decompfile['REF_SIGNAL'] = refSignal
-    decompfile['ACCURACY'] = pd.DataFrame([sil.cpu().numpy() for sil in decomp['silhouettes']])
-    decompfile['IPTS'] = pd.DataFrame(np.array(decomp['source'])[:, :, 0].T)
-    decompfile['MUPULSES'] = [np.array(mup.cpu(), dtype='int32') for mup in decomp['timestamps']]
-    decompfile['FSAMP'] = fsamp
-    decompfile['IED'] = ied
-    decompfile['EMG_LENGTH'] = decompfile['IPTS'].shape[0]
-    decompfile['NUMBER_OF_MUS'] = len(decomp['silhouettes'])
+    # Check if any motor units were extracted
+    num_mus = len(decomp['silhouettes']) if 'silhouettes' in decomp else 0
 
-    # Create binary firing matrix
-    spikeMat = np.zeros((decompfile['NUMBER_OF_MUS'], decompfile['EMG_LENGTH']))
-    for i in range(decompfile['NUMBER_OF_MUS']):
-        spikeMat[i, decompfile['MUPULSES'][i]] = 1
+    if num_mus == 0:
+        # No motor units extracted - create empty but valid structure
+        print(f"WARNING: No motor units extracted. Creating empty OpenHD-EMG file.")
+        decompfile['SOURCE'] = device_from
+        decompfile['FILENAME'] = fn
+        decompfile['RAW_SIGNAL'] = rawEMG_Channels
+        decompfile['REF_SIGNAL'] = refSignal
+        decompfile['ACCURACY'] = pd.DataFrame()  # Empty DataFrame
+        decompfile['IPTS'] = pd.DataFrame(np.zeros((rawEMG_Channels.shape[0], 0)))  # Empty but correct shape
+        decompfile['MUPULSES'] = []  # Empty list
+        decompfile['FSAMP'] = fsamp
+        decompfile['IED'] = ied
+        decompfile['EMG_LENGTH'] = rawEMG_Channels.shape[0]
+        decompfile['NUMBER_OF_MUS'] = 0
+        decompfile['BINARY_MUS_FIRING'] = pd.DataFrame(np.zeros((rawEMG_Channels.shape[0], 0)))  # Empty but correct shape
+        decompfile['EXTRAS'] = extras
+    else:
+        # Populate structured dictionary with extracted motor units
+        decompfile['SOURCE'] = device_from
+        decompfile['FILENAME'] = fn
+        decompfile['RAW_SIGNAL'] = rawEMG_Channels
+        decompfile['REF_SIGNAL'] = refSignal
+        decompfile['ACCURACY'] = pd.DataFrame([sil.cpu().numpy() for sil in decomp['silhouettes']])
+        decompfile['IPTS'] = pd.DataFrame(np.array(decomp['source'])[:, :, 0].T)
+        decompfile['MUPULSES'] = [np.array(mup.cpu(), dtype='int32') for mup in decomp['timestamps']]
+        decompfile['FSAMP'] = fsamp
+        decompfile['IED'] = ied
+        decompfile['EMG_LENGTH'] = decompfile['IPTS'].shape[0]
+        decompfile['NUMBER_OF_MUS'] = num_mus
 
-    decompfile['BINARY_MUS_FIRING'] = pd.DataFrame(spikeMat.T)
-    decompfile['EXTRAS'] = extras
+        # Create binary firing matrix
+        spikeMat = np.zeros((decompfile['NUMBER_OF_MUS'], decompfile['EMG_LENGTH']))
+        for i in range(decompfile['NUMBER_OF_MUS']):
+            spikeMat[i, decompfile['MUPULSES'][i]] = 1
+
+        decompfile['BINARY_MUS_FIRING'] = pd.DataFrame(spikeMat.T)
+        decompfile['EXTRAS'] = extras
 
     # Save the file
     output_json_path = Path(str(out_path).replace('.pkl', '.json'))
@@ -162,6 +182,11 @@ def export_to_muedit_mat(json_load_filepath, ngrid = 1):
     mat_save_filepath = json_load_filepath.replace(".json","_muedit.mat")
     nMU = json_from_openhdemg["IPTS"].shape[1]
     nCH = json_from_openhdemg["RAW_SIGNAL"].shape[1]
+
+    # Check if any motor units were extracted
+    if nMU == 0:
+        print(f"WARNING: No motor units extracted. Creating empty MUEdit file.")
+
     dict_for_muedit = allocate_muedit_file_structure()
     dict_for_muedit["signal"]["data"] = np.transpose(json_from_openhdemg["RAW_SIGNAL"].to_numpy())
     dict_for_muedit["signal"]["fsamp"] = json_from_openhdemg["FSAMP"]
@@ -169,37 +194,51 @@ def export_to_muedit_mat(json_load_filepath, ngrid = 1):
     dict_for_muedit["signal"]["ngrid"] = ngrid # so far we support only one grid at-a-time decomposition and cleaning, doublicate removal is done in a seperate step
     dict_for_muedit["signal"]["gridname"] = np.array([[str(json_from_openhdemg["EXTRAS"].loc[0.0]).split(" - ")[-1].split(' ')[0].replace('HD','GR')]], dtype=object)
     dict_for_muedit["signal"]["muscle"] = np.array([[str(json_from_openhdemg["EXTRAS"].loc[0.0]).split(" - ")[0][1:].strip()]], dtype=object)
+
     # Build 1 x ngrid cell array for MATLAB
     pulsetrain_cell = np.empty((1, ngrid), dtype=object)
-    # Each cell must be nMU x n_samples (double)
-    ipts = json_from_openhdemg["IPTS"].to_numpy(dtype=np.float64, copy=True).T
-    pulsetrain_cell[0, 0] =  ipts/ipts.max() # normalize for MUEdit
+
+    if nMU > 0:
+        # Each cell must be nMU x n_samples (double)
+        ipts = json_from_openhdemg["IPTS"].to_numpy(dtype=np.float64, copy=True).T
+        pulsetrain_cell[0, 0] = ipts/ipts.max() # normalize for MUEdit
+    else:
+        # Empty pulsetrain for no motor units
+        n_samples = json_from_openhdemg["RAW_SIGNAL"].shape[0]
+        pulsetrain_cell[0, 0] = np.empty((0, n_samples), dtype=np.float64)
+
     # Assign into your struct and save
     dict_for_muedit["signal"]["Pulsetrain"] = pulsetrain_cell
-    
+
     # Build ngrid x nMU MATLAB cell
-    discharges_cell = np.empty((ngrid, nMU), dtype=object)
-    # Fill row g=0 (your single grid) with 1 x n_i doubles
-    for mu in range(nMU):
-        seq = json_from_openhdemg["MUPULSES"][mu]+1 # +1 for 1-padded Matlab
-        # make sure it's a 1 x n_i row vector of doubles
-        arr = np.asarray(seq, dtype=np.float64).reshape(1, -1)
-        discharges_cell[0, mu] = arr
+    discharges_cell = np.empty((ngrid, max(nMU, 1)), dtype=object)  # At least 1 column for MATLAB compatibility
+
+    if nMU > 0:
+        # Fill row g=0 (your single grid) with 1 x n_i doubles
+        for mu in range(nMU):
+            seq = json_from_openhdemg["MUPULSES"][mu]+1 # +1 for 1-padded Matlab
+            # make sure it's a 1 x n_i row vector of doubles
+            arr = np.asarray(seq, dtype=np.float64).reshape(1, -1)
+            discharges_cell[0, mu] = arr
+    else:
+        # Empty discharge times for no motor units
+        discharges_cell[0, 0] = np.empty((1, 0), dtype=np.float64)
+
     dict_for_muedit["signal"]["Dischargetimes"] = discharges_cell
-    
+
     dict_for_muedit['signal']['IED'] = json_from_openhdemg["IED"]
     dict_for_muedit['signal']['target'] = np.transpose(json_from_openhdemg["REF_SIGNAL"]) # dirty fix, we'd have to take this from somewhere else or parr it directly
     dict_for_muedit['signal']['path'] = np.transpose(json_from_openhdemg["REF_SIGNAL"])
     dict_for_muedit['signal']['emgtype'] = np.ones((1,ngrid))
-    
+
     # Build 1 x ngrid MATLAB cell
     bad_channel_bool = np.empty((1,ngrid), dtype=object)
     bad_channel_bool[0,0] = np.asarray(np.zeros(((nCH,1)))) # ToDo - add bad channels from json_from_openhdemg["EXTRAS"]
     dict_for_muedit['signal']['EMGmask'] = bad_channel_bool
-    
+
     # parameters
     dict_for_muedit['parameters']['pathname']   = str(Path(json_load_filepath).parent)
     dict_for_muedit['parameters']['filename']   = str(Path(json_load_filepath).name)
-    
+
     sio.savemat(mat_save_filepath, dict_for_muedit, do_compression=True, long_field_names=True)
     print(f'Saved for cleaning in MUEdit: {mat_save_filepath}')
