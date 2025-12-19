@@ -313,7 +313,7 @@ def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_
                 fig.savefig(plot_path, dpi=150, bbox_inches='tight')
                 print(f"\n[OK] Channel selection plot saved to: {plot_path}")
 
-            plt.show(block=False)
+            plt.close(fig)
 
             print("="*80)
 
@@ -324,10 +324,10 @@ def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_
             import matplotlib.pyplot as plt
             plt.plot(ref_path_target)
             plt.plot(ref_path_measured)
-            plt.show(block=False)
+            plt.close()
             for i, goodCh in enumerate(good_channels):
                 plt.plot(i+mat['Data'][:, goodCh]/(max(mat['Data'][:, goodCh])*1.3))
-            plt.show(block=False)
+            plt.close()
         # Compute thresholds
         baseline_start = ref_path_measured[int(fsamp) * sFrom:int(fsamp * sTo)]
         threshold_start = baseline_start.mean() + baseline_start.std() * n_std
