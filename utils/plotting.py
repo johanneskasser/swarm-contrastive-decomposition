@@ -76,7 +76,7 @@ def plot_sources(
             sil = "Fitness: " + str(np.round(fitness[source_idx], 2))
         ax_mat[source_idx].set_title(exp + " " + sil, fontsize=22)
 
-    plt.show()
+    plt.show(block=False)
 
 
 def plot_accepted_source(source, best_timestamps):
@@ -85,4 +85,4 @@ def plot_accepted_source(source, best_timestamps):
     best_timestamps = best_timestamps.cpu().detach().numpy()
     plt.plot(source, linewidth=2)
     plt.plot(best_timestamps, source[best_timestamps], "ro", markersize=20)
-    plt.show()
+    plt.show(block=False)
