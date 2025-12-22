@@ -22,6 +22,8 @@ from textual.reactive import reactive
 from textual.suggester import Suggester
 from textual.validation import ValidationResult, Validator
 from textual.message import Message
+from textual.worker import Worker, WorkerState
+from textual import work
 
 from .job_manager import JobManager
 from .executor import JobExecutor
@@ -235,8 +237,6 @@ class AddJobScreen(ModalScreen[Optional[dict]]):
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=True),
-        Binding("ctrl+c", "copy", "Copy", show=False),
-        Binding("ctrl+v", "paste", "Paste", show=False),
     ]
 
     def compose(self) -> ComposeResult:
@@ -245,7 +245,7 @@ class AddJobScreen(ModalScreen[Optional[dict]]):
             yield Static("[bold cyan]Add New Job[/]", id="add-job-header")
 
             yield Static(
-                "[dim]💡 Use TAB for path auto-completion | Ctrl+C/V to copy/paste | ESC to cancel[/]",
+                "[dim]💡 TAB: path completion | Ctrl+C/X/V: copy/cut/paste | Ctrl+A: select all | ESC: cancel[/]",
                 id="add-job-help"
             )
 
@@ -308,6 +308,108 @@ class AddJobScreen(ModalScreen[Optional[dict]]):
         self.dismiss(None)
 
 
+class ConfigureHooksScreen(ModalScreen[bool]):
+    """Modal screen for configuring completion hooks."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=True),
+    ]
+
+    def __init__(self, job_manager: JobManager):
+        super().__init__()
+        self.job_manager = job_manager
+        self.current_hook = job_manager.get_completion_hook()
+
+    def compose(self) -> ComposeResult:
+        """Compose the hooks configuration screen."""
+        with Container(id="hooks-container"):
+            yield Static("[bold cyan]Configure Completion Hook[/]", id="hooks-header")
+
+            info_text = """
+[dim]A completion hook is a shell command that runs automatically
+after ALL jobs finish (when using Sequential Background mode).
+
+Example uses:
+  • Send Discord/Slack notification
+  • Trigger another script
+  • Send email notification[/]
+"""
+            yield Static(info_text, id="hooks-info")
+
+            # Current hook display
+            current_text = f"[bold]Current hook:[/]\n{self.current_hook or '[dim](not set)[/]'}"
+            yield Static(current_text, id="current-hook")
+
+            yield Label("New Hook Command: [dim](leave empty to disable)[/]")
+            yield Input(
+                placeholder="Enter shell command... (e.g., curl -X POST https://...)",
+                id="hook-command-input",
+                value=self.current_hook or ""
+            )
+
+            yield Static(
+                "[dim]Example Discord webhook:\ncurl -H \"Content-Type: application/json\" -X POST -d '{\"content\": \"Jobs done!\"}' https://discord.com/api/webhooks/YOUR_URL[/]",
+                id="hook-example"
+            )
+
+            with Horizontal(id="hooks-buttons"):
+                yield Button("Save [dim](Enter)[/]", variant="success", id="save-button")
+                yield Button("Test Current", variant="default", id="test-button")
+                yield Button("Cancel [dim](ESC)[/]", variant="default", id="cancel-button")
+
+    @on(Button.Pressed, "#save-button")
+    def save_hook(self) -> None:
+        """Save the hook configuration."""
+        command = self.query_one("#hook-command-input", Input).value.strip()
+
+        if command:
+            self.job_manager.set_completion_hook(command)
+            self.app.notify("Hook configured successfully!", severity="information")
+        else:
+            self.job_manager.set_completion_hook(None)
+            self.app.notify("Hook disabled", severity="information")
+
+        self.dismiss(True)
+
+    @on(Button.Pressed, "#test-button")
+    def test_hook(self) -> None:
+        """Test the current hook."""
+        if not self.current_hook:
+            self.app.notify("No hook configured to test", severity="warning")
+            return
+
+        self.app.notify(f"Testing hook...", severity="information")
+
+        try:
+            import subprocess
+            result = subprocess.run(
+                self.current_hook,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            if result.returncode == 0:
+                self.app.notify(f"Hook executed successfully (exit code 0)", severity="information")
+            else:
+                self.app.notify(f"Hook failed (exit code {result.returncode})", severity="error")
+
+            # Show output if any
+            if result.stdout:
+                self.app.notify(f"Output: {result.stdout[:100]}", severity="information")
+
+        except subprocess.TimeoutExpired:
+            self.app.notify("Hook timed out (30 seconds)", severity="error")
+        except Exception as e:
+            self.app.notify(f"Error executing hook: {str(e)}", severity="error")
+
+    @on(Button.Pressed, "#cancel-button")
+    def action_cancel(self) -> None:
+        """Cancel and close."""
+        self.dismiss(False)
+
+
 class SchedulerTUI(App):
     """HD-EMG Decomposition Scheduler TUI Application."""
 
@@ -320,6 +422,15 @@ class SchedulerTUI(App):
         width: 100%;
         height: 100%;
         padding: 1;
+    }
+
+    #worker-status {
+        height: 3;
+        padding: 0 1;
+        background: $boost;
+        border: solid $accent;
+        margin-bottom: 1;
+        text-align: center;
     }
 
     #jobs-table {
@@ -397,6 +508,54 @@ class SchedulerTUI(App):
         border: round $accent;
     }
 
+    #hooks-container {
+        width: 90%;
+        height: auto;
+        max-height: 85%;
+        background: $surface;
+        border: thick $primary;
+        padding: 2;
+    }
+
+    #hooks-header {
+        text-align: center;
+        margin-bottom: 1;
+        text-style: bold;
+    }
+
+    #hooks-info {
+        margin-bottom: 2;
+        padding: 1;
+        background: $boost;
+        border: round $accent;
+    }
+
+    #current-hook {
+        margin-bottom: 2;
+        padding: 1;
+        background: $panel;
+        border: solid $primary;
+    }
+
+    #hook-example {
+        margin-top: 1;
+        margin-bottom: 2;
+        padding: 1;
+        background: $panel;
+    }
+
+    #hooks-buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        margin-top: 2;
+    }
+
+    #hooks-buttons Button {
+        margin: 0 1;
+        min-width: 20;
+    }
+
     Label {
         margin-top: 1;
         margin-bottom: 0;
@@ -443,6 +602,7 @@ class SchedulerTUI(App):
         Binding("d", "view_details", "Details", show=True),
         Binding("x", "remove_job", "Remove Job", show=True),
         Binding("c", "clear_completed", "Clear Completed", show=True),
+        Binding("h", "configure_hooks", "Hooks", show=True),
         Binding("f5", "refresh", "Refresh", show=True),
     ]
 
@@ -454,12 +614,16 @@ class SchedulerTUI(App):
         self.job_manager = JobManager()
         self.executor = JobExecutor()
         self.selected_job_id: Optional[str] = None
+        self.active_workers: int = 0
 
     def compose(self) -> ComposeResult:
         """Compose the app layout."""
         yield Header(show_clock=True)
 
         with Container(id="main-container"):
+            # Worker status indicator
+            yield Static("", id="worker-status")
+
             # Jobs table
             jobs_table = DataTable(id="jobs-table", cursor_type="row")
             jobs_table.add_columns("ID", "Name", "Status", "Files", "Success", "Failed", "Created")
@@ -473,6 +637,7 @@ class SchedulerTUI(App):
                     yield Button("Details (D)", variant="default", id="btn-details")
                     yield Button("Remove (X)", variant="error", id="btn-remove")
                     yield Button("Clear Completed (C)", variant="default", id="btn-clear")
+                    yield Button("Hooks (H)", variant="default", id="btn-hooks")
                     yield Button("Refresh (F5)", variant="default", id="btn-refresh")
 
         yield Footer()
@@ -481,6 +646,18 @@ class SchedulerTUI(App):
         """Handle mount event."""
         self.refresh_jobs_table()
         self.set_interval(2, self.refresh_jobs_table)  # Auto-refresh every 2 seconds
+        self.update_worker_status()
+
+    def update_worker_status(self) -> None:
+        """Update the worker status display."""
+        worker_widget = self.query_one("#worker-status", Static)
+
+        if self.active_workers == 0:
+            worker_widget.update("[dim]No active background workers[/]")
+        elif self.active_workers == 1:
+            worker_widget.update("[bold cyan]⚙️  1 background worker running[/]")
+        else:
+            worker_widget.update(f"[bold cyan]⚙️  {self.active_workers} background workers running[/]")
 
     def refresh_jobs_table(self) -> None:
         """Refresh the jobs table with latest data."""
@@ -555,7 +732,7 @@ class SchedulerTUI(App):
 
     @on(Button.Pressed, "#btn-run")
     def action_run_job(self) -> None:
-        """Run selected job."""
+        """Run selected job in background worker."""
         if not self.selected_job_id:
             self.notify("Please select a job first", severity="warning")
             return
@@ -569,24 +746,40 @@ class SchedulerTUI(App):
             self.notify("Job is not in pending or failed state", severity="warning")
             return
 
-        # Run job in foreground with file tracking
-        self.notify(f"Starting job '{job['name']}'...", severity="information")
+        # Run job in background worker
+        self.notify(f"Starting job '{job['name']}' in background...", severity="information")
 
-        # Update status
+        # Update status to running
         self.job_manager.update_job_status(
             self.selected_job_id,
             'running',
             started_at=datetime.now().isoformat()
         )
 
+        # Start background worker
+        self.run_job_worker(self.selected_job_id)
+
+    @work(exclusive=False, thread=True)
+    def run_job_worker(self, job_id: str) -> None:
+        """Worker to run job in background thread."""
         try:
+            # Increment worker counter
+            self.active_workers += 1
+            self.call_from_thread(self.update_worker_status)
+
+            # Reload job data (worker runs in separate thread)
+            job = self.job_manager.get_job(job_id)
+            if not job:
+                self.call_from_thread(self.notify, "Job not found", severity="error")
+                return
+
             # Execute with file tracking
             return_code, duration, log_file = self.executor.run_job_with_file_tracking(job, self.job_manager)
 
             # Update final status
             final_status = 'completed' if return_code == 0 else 'failed'
             self.job_manager.update_job_status(
-                self.selected_job_id,
+                job_id,
                 final_status,
                 completed_at=datetime.now().isoformat(),
                 duration_seconds=duration,
@@ -594,20 +787,33 @@ class SchedulerTUI(App):
                 log_file=log_file
             )
 
+            # Notify completion on main thread
             if return_code == 0:
-                self.notify(f"Job completed successfully!", severity="information")
+                job_data = self.job_manager.get_job(job_id)
+                total = job_data.get('total_files', 0)
+                successful = job_data.get('successful_files', 0)
+                failed = job_data.get('failed_files', 0)
+
+                message = f"Job '{job['name']}' completed! {successful}/{total} files successful"
+                self.call_from_thread(self.notify, message, severity="information")
             else:
-                self.notify(f"Job failed. Check log: {log_file}", severity="error")
+                self.call_from_thread(self.notify, f"Job '{job['name']}' failed. Check log.", severity="error")
 
         except Exception as e:
-            self.notify(f"Error running job: {str(e)}", severity="error")
+            # Handle errors
             self.job_manager.update_job_status(
-                self.selected_job_id,
+                job_id,
                 'failed',
                 completed_at=datetime.now().isoformat()
             )
+            self.call_from_thread(self.notify, f"Error: {str(e)}", severity="error")
 
-        self.refresh_jobs_table()
+        finally:
+            # Decrement worker counter
+            self.active_workers -= 1
+            self.call_from_thread(self.update_worker_status)
+            # Refresh table on main thread
+            self.call_from_thread(self.refresh_jobs_table)
 
     @on(Button.Pressed, "#btn-details")
     def action_view_details(self) -> None:
@@ -653,6 +859,15 @@ class SchedulerTUI(App):
         """Manually refresh jobs table."""
         self.refresh_jobs_table()
         self.notify("Jobs refreshed", severity="information")
+
+    @on(Button.Pressed, "#btn-hooks")
+    def action_configure_hooks(self) -> None:
+        """Open hooks configuration screen."""
+        def handle_result(saved: bool) -> None:
+            if saved:
+                self.notify("Hooks configuration saved", severity="information")
+
+        self.push_screen(ConfigureHooksScreen(self.job_manager), handle_result)
 
 
 def main():

@@ -24,6 +24,8 @@ Modern scheduler for running SCD decomposition jobs with file-by-file processing
 - ✅ Auto-refresh job status
 - ✅ Persistent job storage (JSON-based)
 - ✅ Comprehensive logging with timestamps
+- ✅ Completion hooks - run custom commands after all jobs finish
+- ✅ Background worker status display in TUI
 
 ## Installation
 
@@ -115,14 +117,23 @@ The new Textual UI provides an intuitive, real-time interface:
 ```
 
 **Keyboard Shortcuts:**
+
 - `A` - Add new job
 - `R` - Run selected job
 - `D` - View detailed job information with file-level results
 - `X` - Remove selected job
 - `C` - Clear all completed/failed jobs
+- `H` - Configure completion hooks (run commands after all jobs finish)
 - `F5` - Manually refresh (auto-refreshes every 2 seconds)
 - `Q` - Quit
 - `↑/↓` - Navigate between jobs
+
+**Background Worker Status:**
+
+- The TUI displays active background workers at the top of the screen
+- Shows: "⚙️ X background workers running" when jobs are executing
+- Workers run in separate threads, keeping the UI responsive
+- All file processing happens in background workers
 
 ### 3. Classic CLI Menu
 
