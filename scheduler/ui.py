@@ -475,6 +475,7 @@ class SchedulerUI:
         """
         Execute a single job in foreground (wait for completion).
         Full performance - no resource competition with other jobs.
+        Uses file-by-file processing with individual tracking.
 
         Args:
             job: Job dictionary
@@ -496,8 +497,8 @@ class SchedulerUI:
         print()
 
         try:
-            # Execute job and WAIT for completion (blocking)
-            return_code, duration, log_file = self.executor.run_job(job)
+            # Execute job with file tracking (blocking)
+            return_code, duration, log_file = self.executor.run_job_with_file_tracking(job, self.job_manager)
 
             # Determine final status
             end_time = datetime.now()
@@ -521,16 +522,25 @@ class SchedulerUI:
                 log_file=log_file
             )
 
-            # Display summary
+            # Display summary with file statistics
+            job_data = self.job_manager.get_job(job_id)
+            total = job_data.get('total_files', 0)
+            successful = job_data.get('successful_files', 0)
+            failed = job_data.get('failed_files', 0)
+
             print()
             print("-" * 80)
             print(f"Completed: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
             print(f"Duration: {self._format_duration(duration)}")
             print(f"Status: {status_text}")
+            if total > 0:
+                print(f"Files: {total} total, {successful} successful, {failed} failed")
             print(f"Log: {log_file}")
 
         except Exception as e:
             print(f"\n[X] Failed to execute job: {str(e)}")
+            import traceback
+            traceback.print_exc()
             self.job_manager.update_job_status(
                 job_id,
                 'failed',
@@ -824,6 +834,41 @@ class SchedulerUI:
 
                 if job.get('log_file'):
                     print(f"Log File:    {job['log_file']}")
+
+                # File processing statistics
+                total = job.get('total_files', 0)
+                if total > 0:
+                    successful = job.get('successful_files', 0)
+                    failed = job.get('failed_files', 0)
+                    current = job.get('current_file')
+
+                    print(f"\n{'='*80}")
+                    print("FILE PROCESSING STATUS")
+                    print('='*80)
+                    print(f"Total files:      {total}")
+                    print(f"Successful:       {successful}")
+                    print(f"Failed:           {failed}")
+                    print(f"In progress:      {len(job.get('files_processed', [])) - (successful + failed)}")
+
+                    if current:
+                        from pathlib import Path
+                        print(f"Currently processing: {Path(current).name}")
+
+                    # Show processed files
+                    files_processed = job.get('files_processed', [])
+                    if files_processed:
+                        print(f"\n{'='*80}")
+                        print("PROCESSED FILES")
+                        print('='*80)
+                        for file_result in files_processed:
+                            from pathlib import Path
+                            file_name = Path(file_result['file_path']).name
+                            status = "[OK]" if file_result['success'] else "[FAILED]"
+                            grids = len(file_result.get('grids_processed', []))
+                            print(f"{status} {file_name} - {grids} grid(s)")
+                            if not file_result['success'] and file_result.get('error'):
+                                print(f"     Error: {file_result['error'][:100]}")
+                        print('='*80)
 
             else:
                 print("\nInvalid job number.")

@@ -1,22 +1,48 @@
 # HD-EMG Decomposition Scheduler
 
-Interactive CLI tool for scheduling and running multiple HD-EMG decomposition jobs sequentially.
+Modern scheduler for running SCD decomposition jobs with file-by-file processing and intuitive TUI.
 
-## Features
+## ✨ Version 2.0 - NEW Features!
 
-- ✅ Interactive menu-driven interface
-- ✅ Add/remove/view jobs easily
-- ✅ Run all pending jobs or individual jobs
-- ✅ Real-time output streaming to console
+### 🎨 Modern Textual TUI
+- Beautiful, responsive terminal user interface
+- Real-time job status updates (auto-refresh every 2 seconds)
+- Intuitive keyboard shortcuts (A/R/D/X/C/F5/Q)
+- Color-coded status indicators
+- Modal dialogs for adding jobs and viewing details
+
+### 📁 File-by-File Processing ⭐
+- **Isolated Error Handling**: Failed files don't block other files from being processed
+- **Individual Tracking**: See which files succeeded and which failed
+- **Detailed Results**: View grid processing information for each file
+- **Progress Monitoring**: Track current file being processed in real-time
+
+### 📊 Enhanced Job Management
+- ✅ Add/remove jobs with validation
+- ✅ View detailed job information including file-level results
+- ✅ Clear completed jobs
+- ✅ Auto-refresh job status
+- ✅ Persistent job storage (JSON-based)
 - ✅ Comprehensive logging with timestamps
-- ✅ Automatic error handling (continues on failure)
-- ✅ Job status tracking (pending/running/completed/failed)
 
 ## Installation
 
-No additional installation needed - the scheduler uses only Python standard library plus the existing project dependencies.
+### Required: Textual UI Library
 
-### Required: Process Tracking
+The new TUI requires the `textual` library:
+
+```bash
+pip install textual
+```
+
+Or with conda:
+
+```bash
+conda activate decomposition
+pip install textual
+```
+
+### Recommended: Process Tracking
 
 For background job tracking, install `psutil`:
 
@@ -54,11 +80,51 @@ pip install psutil pyreadline3
 
 ### 1. Start the Scheduler
 
+**Modern TUI (Default & Recommended):**
+
 ```bash
 python scheduler.py
 ```
 
-### 2. Interactive Menu
+**Classic CLI:**
+
+```bash
+python scheduler.py --cli
+```
+
+### 2. Modern TUI Interface
+
+The new Textual UI provides an intuitive, real-time interface:
+
+![TUI Interface]
+```
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ HD-EMG Decomposition Scheduler                            2025-12-22 14:30:15 ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ID       Name                  Status      Files Success Failed Created      ┃
+┠────────────────────────────────────────────────────────────────────────────────┨
+┃ _104523  Dataset_A             ✓ Done      15    13      2      2025-12-22    ┃
+┃ _105632  Biceps_Session_1      ▶ Running   8     3       0      2025-12-22    ┃
+┃ _110245  Control_Group         ⏸ Pending   12    0       0      2025-12-22    ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ [Add Job (A)]  [Run Job (R)]  [Details (D)]  [Remove (X)]  [Clear (C)]  [F5] ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+ Q Quit | A Add Job | R Run Job | D Details | X Remove Job | C Clear | F5 Refresh
+```
+
+**Keyboard Shortcuts:**
+- `A` - Add new job
+- `R` - Run selected job
+- `D` - View detailed job information with file-level results
+- `X` - Remove selected job
+- `C` - Clear all completed/failed jobs
+- `F5` - Manually refresh (auto-refreshes every 2 seconds)
+- `Q` - Quit
+- `↑/↓` - Navigate between jobs
+
+### 3. Classic CLI Menu
 
 Once started, you'll see the main menu:
 

@@ -4,6 +4,7 @@ import torch
 from pathlib import Path
 import scipy.io as sio
 import argparse
+from typing import List, Dict, Optional, Tuple
 
 from config.structures import set_random_seed, Config
 from models.scd import SwarmContrastiveDecomposition
@@ -12,6 +13,165 @@ from utils.exporting import export_to_openhdemg_json, export_to_muedit_mat
 from utils.preprocessing import loadEMG_updConfig, extract_raw_emg_metadata, load_channel_selection_json, get_grids_from_json
 
 set_random_seed(seed=42)
+
+
+def find_processable_files(input_path: Path) -> List[Path]:
+    """
+    Find all processable .mat files in a directory.
+
+    Args:
+        input_path: Path to directory or single file
+
+    Returns:
+        List of processable .mat file paths
+    """
+    if input_path.is_file():
+        # Single file provided
+        if input_path.suffix == '.mat':
+            return [input_path]
+        else:
+            return []
+    elif input_path.is_dir():
+        # Directory provided - find all .mat files
+        return sorted([f for f in input_path.iterdir() if f.is_file() and f.suffix == '.mat'])
+    else:
+        return []
+
+
+def process_single_file(file_path: Path, output_folder: Path,
+                       config_overrides: Optional[Dict] = None) -> Dict:
+    """
+    Process a single .mat file through the SCD algorithm.
+
+    Args:
+        file_path: Path to the .mat file to process
+        output_folder: Output directory for results
+        config_overrides: Optional configuration overrides
+
+    Returns:
+        Dictionary with processing results:
+        {
+            'success': bool,
+            'file_path': str,
+            'grids_processed': List[Dict],  # Info about each grid processed
+            'error': str (if failed)
+        }
+    """
+    result = {
+        'success': False,
+        'file_path': str(file_path),
+        'grids_processed': [],
+        'error': None
+    }
+
+    try:
+        print(f"\n{'='*80}")
+        print(f"Processing file: {file_path.name}")
+        print('='*80)
+
+        # Try to load channel selection JSON
+        channel_selection = load_channel_selection_json(file_path)
+        grids = get_grids_from_json(channel_selection)
+
+        # If grids are found in JSON, process each grid separately
+        if grids:
+            print(f"\nProcessing {len(grids)} grid(s) separately...")
+            for grid_idx, grid_info in enumerate(grids):
+                grid_key = grid_info.get('grid_key', f'grid_{grid_idx}')
+                print(f"\n{'-'*80}")
+                print(f"Processing grid {grid_idx + 1}/{len(grids)}: {grid_key}")
+                print('-'*80)
+
+                # Try to extract muscle name from description for filename
+                muscle_name = None
+                try:
+                    from utils.preprocessing import extract_muscle_name_from_description
+                    mat_data = sio.loadmat(file_path)
+                    channel_range = [
+                        min(ch['channel_index'] for ch in grid_info['channels']),
+                        max(ch['channel_index'] for ch in grid_info['channels']) + 1
+                    ]
+                    if 'Description' in mat_data and len(mat_data['Description']) > channel_range[0]:
+                        description = mat_data['Description'][channel_range[0]][0][0]
+                        if isinstance(description, np.ndarray):
+                            description = str(description[0]) if description.size > 0 else str(description)
+                        muscle_name = extract_muscle_name_from_description(description)
+                        if muscle_name:
+                            print(f"Muscle detected: {muscle_name}")
+                except Exception as e:
+                    print(f"Warning: Could not extract muscle name: {e}")
+
+                # Create output path with grid suffix and optional muscle name
+                filename_base = file_path.stem
+                if muscle_name:
+                    filename_suffix = f'_{grid_key}_{muscle_name}'
+                else:
+                    filename_suffix = f'_{grid_key}'
+                output_path = output_folder.joinpath(
+                    f'{filename_base}{filename_suffix}'
+                ).with_suffix(".pkl")
+
+                # Train model for this grid
+                dictionary, _, mat, config = train(file_path, grid_info=grid_info,
+                                                  grid_suffix=f"_{grid_key}",
+                                                  output_folder=output_folder)
+
+                # Save results
+                save_results(output_path, dictionary)
+                print(f"Saved results to {output_path}")
+
+                # Prepare Raw Data Info for openHDEMG
+                rawEMG_Channels, refSignal, fsamp, ied, extras = extract_raw_emg_metadata(file_path, config)
+                # Save decomposition result to openhdemg compressed json format
+                export_to_openhdemg_json(config, output_path, rawEMG_Channels, refSignal, ied, fsamp, str(file_path), extras)
+                # Save decomposition result to muEdit compatible .mat format for manual cleaning
+                export_to_muedit_mat(str(output_path).replace('.pkl', '.json'))
+
+                print(f"Grid {grid_key} processing complete!")
+
+                # Record grid processing success
+                result['grids_processed'].append({
+                    'grid_key': grid_key,
+                    'muscle_name': muscle_name,
+                    'output_file': str(output_path),
+                    'success': True
+                })
+        else:
+            # No channel selection JSON found - use original behavior (backward compatibility)
+            print("\nNo channel selection JSON found. Using default channel configuration...")
+
+            output_path = output_folder.joinpath(file_path.stem).with_suffix(".pkl")
+
+            dictionary, _, mat, config = train(file_path, output_folder=output_folder)
+
+            save_results(output_path, dictionary)
+            print(f"Saved results to {output_path}")
+
+            # Prepare Raw Data Info for openHDEMG
+            rawEMG_Channels, refSignal, fsamp, ied, extras = extract_raw_emg_metadata(file_path, config)
+            # Save decomposition result to openhdemg compressed json format
+            export_to_openhdemg_json(config, output_path, rawEMG_Channels, refSignal, ied, fsamp, str(file_path), extras)
+            # Save decomposition result to muEdit compatible .mat format for manual cleaning
+            export_to_muedit_mat(str(output_path).replace('.pkl', '.json'))
+
+            # Record single file processing success
+            result['grids_processed'].append({
+                'grid_key': 'default',
+                'muscle_name': None,
+                'output_file': str(output_path),
+                'success': True
+            })
+
+        result['success'] = True
+        print(f"\n[OK] Successfully processed: {file_path.name}")
+
+    except Exception as e:
+        result['error'] = str(e)
+        print(f"\n[ERROR] Failed to process {file_path.name}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+    return result
 
 
 def train(path, grid_info=None, grid_suffix="", output_folder=None):

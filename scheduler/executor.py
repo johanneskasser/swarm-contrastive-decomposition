@@ -9,7 +9,8 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List
+import json
 
 
 class JobExecutor:
@@ -18,6 +19,153 @@ class JobExecutor:
     def __init__(self):
         """Initialize JobExecutor."""
         pass
+
+    def run_job_with_file_tracking(self, job: Dict, job_manager) -> Tuple[int, float, str]:
+        """
+        Execute a job processing files individually with tracking.
+
+        Args:
+            job: Job dictionary with input_path, output_path, etc.
+            job_manager: JobManager instance for updating job status
+
+        Returns:
+            Tuple of (return_code, duration_seconds, log_file_path)
+        """
+        job_id = job['id']
+        job_name = job['name']
+        input_path = Path(job['input_path'])
+        output_path = Path(job['output_path'])
+
+        # Create output directory
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        # Create log file
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        log_file_path = output_path / f"decomposition_{timestamp}.log"
+
+        start_time = datetime.now()
+
+        # Find all processable files
+        sys.path.insert(0, str(Path.cwd()))
+        from main import find_processable_files, process_single_file
+
+        files = find_processable_files(input_path)
+        if not files:
+            error_msg = f"No processable .mat files found in {input_path}"
+            with open(log_file_path, 'w', encoding='utf-8') as log_file:
+                self._write_log_header(log_file, job, start_time)
+                log_file.write(f"\n[ERROR] {error_msg}\n")
+                end_time = datetime.now()
+                duration = (end_time - start_time).total_seconds()
+                self._write_log_footer(log_file, end_time, duration, 1)
+            return 1, duration, str(log_file_path)
+
+        # Update job with file list
+        job_manager.update_job_files(job_id, [str(f) for f in files])
+
+        # Open log file
+        with open(log_file_path, 'w', encoding='utf-8') as log_file:
+            # Write log header
+            self._write_log_header(log_file, job, start_time)
+            log_file.write(f"\nFound {len(files)} file(s) to process:\n")
+            for f in files:
+                log_file.write(f"  - {f.name}\n")
+            log_file.write("\n" + "="*80 + "\n\n")
+            log_file.flush()
+
+            # Process each file individually
+            all_success = True
+            for idx, file_path in enumerate(files, 1):
+                try:
+                    print(f"\n{'='*80}")
+                    print(f"[File {idx}/{len(files)}] Processing: {file_path.name}")
+                    print('='*80)
+                    log_file.write(f"\n{'='*80}\n")
+                    log_file.write(f"[File {idx}/{len(files)}] Processing: {file_path.name}\n")
+                    log_file.write('='*80 + "\n\n")
+                    log_file.flush()
+
+                    # Update current file in job
+                    job_manager.set_current_file(job_id, str(file_path))
+
+                    # Process the file
+                    file_start = datetime.now()
+                    result = process_single_file(file_path, output_path)
+                    file_end = datetime.now()
+                    file_duration = (file_end - file_start).total_seconds()
+
+                    # Log result
+                    if result['success']:
+                        status_msg = f"[OK] Successfully processed {file_path.name} ({self._format_duration(file_duration)})"
+                        print(status_msg)
+                        log_file.write(f"\n{status_msg}\n")
+                        log_file.write(f"Grids processed: {len(result['grids_processed'])}\n")
+                        for grid in result['grids_processed']:
+                            log_file.write(f"  - {grid['grid_key']}: {grid['output_file']}\n")
+                    else:
+                        status_msg = f"[ERROR] Failed to process {file_path.name}: {result.get('error', 'Unknown error')}"
+                        print(status_msg)
+                        log_file.write(f"\n{status_msg}\n")
+                        all_success = False
+
+                    log_file.write("\n")
+                    log_file.flush()
+
+                    # Add result to job
+                    job_manager.add_processed_file(job_id, result)
+
+                except KeyboardInterrupt:
+                    print("\n\nJob interrupted by user (Ctrl+C)")
+                    log_file.write("\n\n[JOB INTERRUPTED BY USER]\n")
+                    all_success = False
+                    break
+
+                except Exception as e:
+                    error_msg = f"\n[ERROR] Unexpected error processing {file_path.name}: {str(e)}\n"
+                    print(error_msg)
+                    log_file.write(error_msg)
+
+                    import traceback
+                    traceback_str = traceback.format_exc()
+                    log_file.write(f"\n{traceback_str}\n")
+                    log_file.flush()
+
+                    # Record failed file
+                    result = {
+                        'success': False,
+                        'file_path': str(file_path),
+                        'grids_processed': [],
+                        'error': str(e)
+                    }
+                    job_manager.add_processed_file(job_id, result)
+                    all_success = False
+
+            # Calculate duration
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+
+            # Write summary
+            job_data = job_manager.get_job(job_id)
+            successful = job_data.get('successful_files', 0)
+            failed = job_data.get('failed_files', 0)
+            total = job_data.get('total_files', 0)
+
+            summary = f"\n{'='*80}\nPROCESSING SUMMARY\n{'='*80}\n"
+            summary += f"Total files: {total}\n"
+            summary += f"Successful: {successful}\n"
+            summary += f"Failed: {failed}\n"
+            summary += f"{'='*80}\n"
+            print(summary)
+            log_file.write(summary)
+            log_file.flush()
+
+            # Determine return code
+            return_code = 0 if all_success and failed == 0 else 1
+
+            # Write log footer
+            self._write_log_footer(log_file, end_time, duration, return_code)
+
+        return return_code, duration, str(log_file_path)
 
     def run_job_background(self, job: Dict) -> Tuple[int, str]:
         """

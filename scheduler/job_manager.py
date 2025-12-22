@@ -108,7 +108,13 @@ class JobManager:
             "duration_seconds": None,
             "return_code": None,
             "log_file": None,
-            "pid": None
+            "pid": None,
+            "files": [],  # List of files to process
+            "files_processed": [],  # List of processed file results
+            "current_file": None,  # Currently processing file
+            "total_files": 0,
+            "successful_files": 0,
+            "failed_files": 0
         }
 
         # Add to jobs list
@@ -317,3 +323,64 @@ class JobManager:
             return None
 
         return self.jobs_data["hooks"].get("on_all_jobs_completed")
+
+    def update_job_files(self, job_id: str, files: List[str]):
+        """
+        Update the list of files to process for a job.
+
+        Args:
+            job_id: Job ID to update
+            files: List of file paths to process
+        """
+        job = self.get_job(job_id)
+        if not job:
+            raise ValueError(f"Job with ID '{job_id}' not found")
+
+        job['files'] = [str(f) for f in files]
+        job['total_files'] = len(files)
+        job['files_processed'] = []
+        job['successful_files'] = 0
+        job['failed_files'] = 0
+        self.save_jobs()
+
+    def add_processed_file(self, job_id: str, file_result: Dict):
+        """
+        Add a processed file result to a job.
+
+        Args:
+            job_id: Job ID to update
+            file_result: Dictionary with file processing result
+                {
+                    'file_path': str,
+                    'success': bool,
+                    'grids_processed': List[Dict],
+                    'error': str (optional)
+                }
+        """
+        job = self.get_job(job_id)
+        if not job:
+            raise ValueError(f"Job with ID '{job_id}' not found")
+
+        job['files_processed'].append(file_result)
+        if file_result.get('success'):
+            job['successful_files'] = job.get('successful_files', 0) + 1
+        else:
+            job['failed_files'] = job.get('failed_files', 0) + 1
+
+        job['current_file'] = None
+        self.save_jobs()
+
+    def set_current_file(self, job_id: str, file_path: Optional[str]):
+        """
+        Set the currently processing file for a job.
+
+        Args:
+            job_id: Job ID to update
+            file_path: Path of file being processed, or None
+        """
+        job = self.get_job(job_id)
+        if not job:
+            raise ValueError(f"Job with ID '{job_id}' not found")
+
+        job['current_file'] = str(file_path) if file_path else None
+        self.save_jobs()
