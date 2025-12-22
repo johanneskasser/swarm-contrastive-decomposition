@@ -7,6 +7,7 @@ Modern terminal user interface using Textual framework.
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
+import os
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
@@ -18,9 +19,102 @@ from textual.binding import Binding
 from textual.screen import Screen, ModalScreen
 from textual import on
 from textual.reactive import reactive
+from textual.suggester import Suggester
+from textual.validation import ValidationResult, Validator
+from textual.message import Message
 
 from .job_manager import JobManager
 from .executor import JobExecutor
+
+
+class PathCompleter:
+    """Path completion helper for input fields."""
+
+    @staticmethod
+    def get_completions(current_text: str) -> List[str]:
+        """Get path completions for the current text."""
+        if not current_text:
+            current_text = "."
+
+        # Expand ~ to home directory
+        if current_text.startswith("~"):
+            current_text = os.path.expanduser(current_text)
+
+        try:
+            # Get directory and prefix
+            if os.path.isdir(current_text):
+                directory = current_text
+                prefix = ""
+            else:
+                directory = os.path.dirname(current_text) or "."
+                prefix = os.path.basename(current_text)
+
+            # Find matching entries
+            matches = []
+            if os.path.exists(directory):
+                for entry in os.listdir(directory):
+                    if entry.startswith(prefix) or not prefix:
+                        full_path = os.path.join(directory, entry)
+                        # Add trailing separator for directories
+                        if os.path.isdir(full_path):
+                            matches.append(full_path + os.sep)
+                        else:
+                            matches.append(full_path)
+
+            return sorted(matches)[:10]  # Return max 10 matches
+        except (OSError, PermissionError):
+            return []
+
+    @staticmethod
+    def complete(current_text: str) -> Optional[str]:
+        """Complete the current path to the longest common prefix."""
+        matches = PathCompleter.get_completions(current_text)
+
+        if not matches:
+            return None
+
+        if len(matches) == 1:
+            return matches[0]
+
+        # Find common prefix
+        common = os.path.commonprefix(matches)
+        if common and common != current_text:
+            return common
+
+        return None
+
+
+class PathInput(Input):
+    """Input widget with path completion support."""
+
+    BINDINGS = [
+        Binding("tab", "complete_path", "Complete Path", show=False),
+    ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.completion_list: List[str] = []
+
+    def action_complete_path(self) -> None:
+        """Complete the current path."""
+        current = self.value
+
+        # Try to complete
+        completed = PathCompleter.complete(current)
+
+        if completed:
+            self.value = completed
+            self.cursor_position = len(completed)
+        else:
+            # Show available options
+            matches = PathCompleter.get_completions(current)
+            if matches:
+                self.completion_list = matches
+                # If there are matches, show them as a notification
+                options_str = "\n".join([os.path.basename(m.rstrip(os.sep)) for m in matches[:5]])
+                if len(matches) > 5:
+                    options_str += f"\n... and {len(matches) - 5} more"
+                self.app.notify(f"Suggestions:\n{options_str}", title="Path Completion")
 
 
 class JobDetailsScreen(Screen):
@@ -141,6 +235,8 @@ class AddJobScreen(ModalScreen[Optional[dict]]):
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=True),
+        Binding("ctrl+c", "copy", "Copy", show=False),
+        Binding("ctrl+v", "paste", "Paste", show=False),
     ]
 
     def compose(self) -> ComposeResult:
@@ -148,33 +244,56 @@ class AddJobScreen(ModalScreen[Optional[dict]]):
         with Container(id="add-job-container"):
             yield Static("[bold cyan]Add New Job[/]", id="add-job-header")
 
-            yield Label("Job Name:")
-            yield Input(placeholder="Enter job name...", id="job-name-input")
+            yield Static(
+                "[dim]💡 Use TAB for path auto-completion | Ctrl+C/V to copy/paste | ESC to cancel[/]",
+                id="add-job-help"
+            )
 
-            yield Label("Input Path:")
-            yield Input(placeholder="Path to .mat file or directory...", id="input-path-input")
+            yield Label("Job Name: [red]*[/]")
+            yield Input(placeholder="Enter descriptive job name...", id="job-name-input")
 
-            yield Label("Output Path:")
-            yield Input(placeholder="Output directory path...", id="output-path-input")
+            yield Label("Input Path: [red]*[/] [dim](file or directory)[/]")
+            yield PathInput(placeholder="Path to .mat file or directory... (TAB to complete)", id="input-path-input")
 
-            yield Label("Description (optional):")
+            yield Label("Output Path: [red]*[/] [dim](directory)[/]")
+            yield PathInput(placeholder="Output directory path... (TAB to complete)", id="output-path-input")
+
+            yield Label("Description: [dim](optional)[/]")
             yield Input(placeholder="Job description...", id="description-input")
 
             with Horizontal(id="add-job-buttons"):
-                yield Button("Add Job", variant="success", id="add-button")
-                yield Button("Cancel", variant="default", id="cancel-button")
+                yield Button("Add Job [dim](Enter)[/]", variant="success", id="add-button")
+                yield Button("Cancel [dim](ESC)[/]", variant="default", id="cancel-button")
 
     @on(Button.Pressed, "#add-button")
     def add_job(self) -> None:
         """Add the job."""
         name = self.query_one("#job-name-input", Input).value.strip()
-        input_path = self.query_one("#input-path-input", Input).value.strip()
-        output_path = self.query_one("#output-path-input", Input).value.strip()
+        input_path = self.query_one("#input-path-input", PathInput).value.strip()
+        output_path = self.query_one("#output-path-input", PathInput).value.strip()
         description = self.query_one("#description-input", Input).value.strip()
 
-        if not name or not input_path or not output_path:
-            self.app.notify("Please fill in all required fields", severity="error")
+        # Validate required fields
+        if not name:
+            self.app.notify("Job name is required", severity="error")
+            self.query_one("#job-name-input").focus()
             return
+
+        if not input_path:
+            self.app.notify("Input path is required", severity="error")
+            self.query_one("#input-path-input").focus()
+            return
+
+        if not output_path:
+            self.app.notify("Output path is required", severity="error")
+            self.query_one("#output-path-input").focus()
+            return
+
+        # Expand user home directory
+        if input_path.startswith("~"):
+            input_path = os.path.expanduser(input_path)
+        if output_path.startswith("~"):
+            output_path = os.path.expanduser(output_path)
 
         self.dismiss({
             'name': name,
@@ -255,16 +374,27 @@ class SchedulerTUI(App):
     }
 
     #add-job-container {
-        width: 70;
+        width: 95%;
         height: auto;
+        max-height: 90%;
         background: $surface;
         border: thick $primary;
         padding: 2;
+        overflow-y: auto;
     }
 
     #add-job-header {
         text-align: center;
         margin-bottom: 1;
+        text-style: bold;
+    }
+
+    #add-job-help {
+        text-align: center;
+        margin-bottom: 2;
+        padding: 1;
+        background: $boost;
+        border: round $accent;
     }
 
     Label {
@@ -272,19 +402,21 @@ class SchedulerTUI(App):
         margin-bottom: 0;
     }
 
-    Input {
+    Input, PathInput {
         margin-bottom: 1;
+        width: 100%;
     }
 
     #add-job-buttons {
         width: 100%;
         height: auto;
         align: center middle;
-        margin-top: 1;
+        margin-top: 2;
     }
 
     #add-job-buttons Button {
         margin: 0 1;
+        min-width: 20;
     }
 
     .status-pending {
