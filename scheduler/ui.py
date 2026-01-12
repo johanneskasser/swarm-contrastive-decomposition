@@ -74,7 +74,7 @@ class SchedulerUI:
             self._clear_screen()
             self._display_menu()
 
-            choice = input("\nEnter choice (1-11): ").strip()
+            choice = input("\nEnter choice (1-12): ").strip()
 
             if choice == '1':
                 self._view_all_jobs()
@@ -91,16 +91,18 @@ class SchedulerUI:
             elif choice == '7':
                 self._view_job_log()
             elif choice == '8':
-                self._clear_completed_jobs()
+                self._view_status_file()
             elif choice == '9':
-                self._retry_failed_jobs()
+                self._clear_completed_jobs()
             elif choice == '10':
-                self._configure_completion_hook()
+                self._retry_failed_jobs()
             elif choice == '11':
+                self._configure_completion_hook()
+            elif choice == '12':
                 print("\nExiting scheduler. Goodbye!")
                 break
             else:
-                print("\nInvalid choice. Please enter a number between 1 and 11.")
+                print("\nInvalid choice. Please enter a number between 1 and 12.")
                 self._pause()
 
     def _clear_screen(self):
@@ -205,10 +207,11 @@ class SchedulerUI:
         print("  5. Run single job")
         print("  6. View job details")
         print("  7. View job log")
-        print("  8. Clear completed jobs")
-        print("  9. Retry failed jobs")
-        print(" 10. Configure completion hook")
-        print(" 11. Exit")
+        print("  8. View status file (real-time file progress)")
+        print("  9. Clear completed jobs")
+        print(" 10. Retry failed jobs")
+        print(" 11. Configure completion hook")
+        print(" 12. Exit")
         print()
 
     def _view_all_jobs(self):
@@ -835,6 +838,25 @@ class SchedulerUI:
                 if job.get('log_file'):
                     print(f"Log File:    {job['log_file']}")
 
+                if job.get('status_file'):
+                    print(f"Status File: {job['status_file']}")
+
+                    # If job is running or just completed, show status file content
+                    if job['status'] in ['running', 'completed', 'failed']:
+                        status_file_path = Path(job['status_file'])
+                        if status_file_path.exists():
+                            print(f"\n{'='*80}")
+                            print("FILE PROCESSING STATUS (from status file)")
+                            print('='*80)
+                            try:
+                                with open(status_file_path, 'r', encoding='utf-8') as sf:
+                                    # Read and display the status file content
+                                    content = sf.read()
+                                    print(content)
+                            except Exception as e:
+                                print(f"Error reading status file: {e}")
+                            print('='*80)
+
                 # File processing statistics
                 total = job.get('total_files', 0)
                 if total > 0:
@@ -930,6 +952,63 @@ class SchedulerUI:
                         lines = f.readlines()
                         tail_lines = lines[-50:] if len(lines) > 50 else lines
                         print(''.join(tail_lines))
+
+            else:
+                print("\nInvalid job number.")
+        except ValueError:
+            print("\nInvalid input.")
+
+        self._pause()
+
+    def _view_status_file(self):
+        """View status file for a job to see real-time file processing progress."""
+        jobs = [j for j in self.job_manager.load_jobs() if j.get('status_file')]
+
+        if not jobs:
+            print("\nNo jobs with status files available.")
+            self._pause()
+            return
+
+        # Show jobs with status files
+        print("\n" + "=" * 80)
+        print("VIEW STATUS FILE")
+        print("=" * 80)
+        print()
+
+        for idx, job in enumerate(jobs, 1):
+            status = self._format_status(job['status'])
+            print(f"  {idx}. {job['name']} ({status})")
+
+        print()
+        choice = input("Enter job number to view status (or 'c' to cancel): ").strip()
+
+        if choice.lower() == 'c':
+            return
+
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(jobs):
+                job = jobs[idx]
+                status_file = Path(job['status_file'])
+
+                if not status_file.exists():
+                    print(f"\nError: Status file not found: {status_file}")
+                    self._pause()
+                    return
+
+                print("\n" + "=" * 80)
+                print(f"STATUS FILE: {job['name']}")
+                print("=" * 80)
+                print()
+
+                with open(status_file, 'r', encoding='utf-8') as f:
+                    print(f.read())
+
+                print()
+                print("=" * 80)
+                print("💡 Tip: While a job is running, you can repeatedly view this")
+                print("   status file to see real-time updates of file processing progress.")
+                print("=" * 80)
 
             else:
                 print("\nInvalid job number.")

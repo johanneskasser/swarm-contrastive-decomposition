@@ -108,6 +108,7 @@ class JobManager:
             "duration_seconds": None,
             "return_code": None,
             "log_file": None,
+            "status_file": None,
             "pid": None,
             "files": [],  # List of files to process
             "files_processed": [],  # List of processed file results

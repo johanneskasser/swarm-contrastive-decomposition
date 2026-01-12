@@ -68,8 +68,9 @@ class JobExecutor:
         status_tracker = StatusTracker(output_path, job_name=job_name)
         status_tracker.initialize(files)
 
-        # Update job with file list
+        # Update job with file list and status file path
         job_manager.update_job_files(job_id, [str(f) for f in files])
+        job_manager.update_job_status(job_id, 'running', status_file=str(status_tracker.get_status_file_path()))
 
         # Open log file
         with open(log_file_path, 'w', encoding='utf-8') as log_file:
