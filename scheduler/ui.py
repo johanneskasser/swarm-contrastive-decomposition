@@ -74,7 +74,7 @@ class SchedulerUI:
             self._clear_screen()
             self._display_menu()
 
-            choice = input("\nEnter choice (1-12): ").strip()
+            choice = input("\nEnter choice (1-13): ").strip()
 
             if choice == '1':
                 self._view_all_jobs()
@@ -99,10 +99,12 @@ class SchedulerUI:
             elif choice == '11':
                 self._configure_completion_hook()
             elif choice == '12':
+                self._kill_running_job()
+            elif choice == '13':
                 print("\nExiting scheduler. Goodbye!")
                 break
             else:
-                print("\nInvalid choice. Please enter a number between 1 and 12.")
+                print("\nInvalid choice. Please enter a number between 1 and 13.")
                 self._pause()
 
     def _clear_screen(self):
@@ -199,6 +201,16 @@ class SchedulerUI:
         print("=" * 80)
         print(" " * 20 + "HD-EMG Decomposition Scheduler")
         print("=" * 80)
+
+        # Show running jobs indicator if any
+        running_jobs = self.job_manager.list_jobs(status='running')
+        if running_jobs:
+            print()
+            print(f"  ▶ {len(running_jobs)} job(s) running in background")
+            for job in running_jobs:
+                pid_info = f"PID: {job.get('pid', 'unknown')}" if job.get('pid') else "no PID"
+                print(f"    - {job['name']} ({pid_info})")
+
         print()
         print("  1. View all jobs")
         print("  2. Add new job")
@@ -211,7 +223,8 @@ class SchedulerUI:
         print("  9. Clear completed jobs")
         print(" 10. Retry failed jobs")
         print(" 11. Configure completion hook")
-        print(" 12. Exit")
+        print(" 12. Kill running job")
+        print(" 13. Exit")
         print()
 
     def _view_all_jobs(self):
@@ -1137,6 +1150,182 @@ class SchedulerUI:
         print(f"\n[OK] Reset {reset_count} job(s) to 'pending' status.")
         print("\nYou can now run them using option 4 (Run all pending jobs) or option 5 (Run single job).")
 
+        self._pause()
+
+    def _kill_running_job(self):
+        """Kill a running background job."""
+        print("\n" + "=" * 80)
+        print("KILL RUNNING JOB")
+        print("=" * 80)
+
+        running_jobs = self.job_manager.list_jobs(status='running')
+
+        if not running_jobs:
+            print("\nNo running jobs found.")
+            self._pause()
+            return
+
+        print(f"\nFound {len(running_jobs)} running job(s):")
+        for idx, job in enumerate(running_jobs, 1):
+            pid_info = f"PID: {job.get('pid', 'unknown')}" if job.get('pid') else "no PID"
+            started = self._format_datetime(job.get('started_at'))
+            print(f"  {idx}. {job['name']} ({pid_info}, started: {started})")
+
+        print("\nOptions:")
+        print("  1. Kill specific job")
+        print("  2. Kill all running jobs")
+        print("  3. Cancel")
+
+        choice = input("\nEnter choice (1-3): ").strip()
+
+        jobs_to_kill = []
+
+        if choice == '1':
+            # Kill specific job
+            job_choice = input("\nEnter job number to kill (or 'c' to cancel): ").strip()
+
+            if job_choice.lower() == 'c':
+                print("\nCancelled.")
+                self._pause()
+                return
+
+            try:
+                idx = int(job_choice) - 1
+                if 0 <= idx < len(running_jobs):
+                    jobs_to_kill = [running_jobs[idx]]
+                else:
+                    print("\nInvalid job number.")
+                    self._pause()
+                    return
+            except ValueError:
+                print("\nInvalid input.")
+                self._pause()
+                return
+
+        elif choice == '2':
+            # Kill all running jobs
+            jobs_to_kill = running_jobs
+
+        elif choice == '3':
+            print("\nCancelled.")
+            self._pause()
+            return
+        else:
+            print("\nInvalid choice.")
+            self._pause()
+            return
+
+        # Confirm kill
+        print(f"\n⚠ WARNING: This will forcefully terminate {len(jobs_to_kill)} job(s):")
+        for job in jobs_to_kill:
+            print(f"  - {job['name']} (PID: {job.get('pid', 'unknown')})")
+
+        confirm = input(f"\nAre you sure you want to kill these job(s)? (y/n): ").strip().lower()
+
+        if confirm != 'y':
+            print("\nCancelled.")
+            self._pause()
+            return
+
+        # Kill jobs
+        try:
+            import psutil
+        except ImportError:
+            print("\n[X] psutil not installed. Cannot kill processes.")
+            print("  Install with: pip install psutil")
+            self._pause()
+            return
+
+        killed_count = 0
+        for job in jobs_to_kill:
+            pid = job.get('pid')
+            if pid is None:
+                print(f"\n[X] Job '{job['name']}' has no PID recorded. Cannot kill.")
+                continue
+
+            try:
+                # Get process
+                process = psutil.Process(pid)
+
+                # Get all child processes (in case job spawned multiple processes)
+                try:
+                    children = process.children(recursive=True)
+                    if children:
+                        print(f"  Found {len(children)} child process(es)")
+                except:
+                    children = []
+
+                # First try terminate (graceful) on all processes
+                print(f"\nTerminating job '{job['name']}' (PID: {pid})...")
+
+                # Terminate children first
+                for child in children:
+                    try:
+                        child.terminate()
+                    except:
+                        pass
+
+                # Then terminate parent
+                process.terminate()
+
+                # Wait briefly for termination
+                import time
+                time.sleep(1)
+
+                # If still running, force kill
+                still_running = []
+                try:
+                    if process.is_running():
+                        still_running.append(process)
+                except:
+                    pass
+
+                for child in children:
+                    try:
+                        if child.is_running():
+                            still_running.append(child)
+                    except:
+                        pass
+
+                if still_running:
+                    print(f"  {len(still_running)} process(es) still running, forcing kill...")
+                    for proc in still_running:
+                        try:
+                            proc.kill()
+                        except:
+                            pass
+                    time.sleep(0.5)
+
+                # Update job status
+                self.job_manager.update_job_status(
+                    job['id'],
+                    'failed',
+                    completed_at=datetime.now().isoformat(),
+                    pid=None,
+                    return_code=-1
+                )
+
+                print(f"  [OK] Job terminated successfully")
+                killed_count += 1
+
+            except psutil.NoSuchProcess:
+                print(f"\n[X] Process {pid} not found (may have already finished)")
+                # Update status anyway
+                self.job_manager.update_job_status(
+                    job['id'],
+                    'failed',
+                    completed_at=datetime.now().isoformat(),
+                    pid=None,
+                    return_code=-1
+                )
+
+            except psutil.AccessDenied:
+                print(f"\n[X] Permission denied to kill process {pid}")
+
+            except Exception as e:
+                print(f"\n[X] Error killing job '{job['name']}': {str(e)}")
+
+        print(f"\n[OK] Successfully killed {killed_count} job(s).")
         self._pause()
 
     def _configure_completion_hook(self):
