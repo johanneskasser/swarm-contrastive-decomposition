@@ -581,22 +581,24 @@ class SchedulerUI:
 
         try:
             # Execute job in background (non-blocking)
-            pid, log_file = self.executor.run_job_background(job)
+            pid, log_file, status_file = self.executor.run_job_background(job)
 
-            # Update status to running with PID
+            # Update status to running with PID and status file
             self.job_manager.update_job_status(
                 job_id,
                 'running',
                 started_at=start_time.isoformat(),
                 log_file=log_file,
+                status_file=status_file,
                 pid=pid
             )
 
             print(f"\n[OK] Job started in background")
             print(f"  PID: {pid}")
             print(f"  Log: {log_file}")
+            print(f"  Status: {status_file}")
             print(f"\nThe job will continue running even if you close the scheduler.")
-            print(f"You can monitor progress by viewing the log file (option 7).")
+            print(f"You can monitor progress by viewing the status file (option 8) or log file (option 7).")
 
         except Exception as e:
             print(f"\n[X] Failed to start job: {str(e)}")
@@ -712,14 +714,15 @@ class SchedulerUI:
 
         try:
             # Execute job in background (non-blocking)
-            pid, log_file = self.executor.run_job_background(job)
+            pid, log_file, status_file = self.executor.run_job_background(job)
 
-            # Update status to running with PID
+            # Update status to running with PID and status file
             self.job_manager.update_job_status(
                 job_id,
                 'running',
                 started_at=start_time.isoformat(),
                 log_file=log_file,
+                status_file=status_file,
                 pid=pid
             )
 

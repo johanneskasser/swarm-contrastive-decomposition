@@ -302,6 +302,13 @@ Examples:
         help='Path to directory for output files (default: data/output)'
     )
 
+    parser.add_argument(
+        '--status-file', '-s',
+        type=str,
+        default=None,
+        help='Path to status file for tracking progress (used by scheduler)'
+    )
+
     return parser.parse_args()
 
 
@@ -324,12 +331,28 @@ if __name__ == "__main__":
     print(f"\nInput directory: {INPUT_PATH.resolve()}")
     print(f"Output directory: {OUTPUT_PATH.resolve()}\n")
 
+    # Initialize status tracker if status file path provided
+    status_tracker = None
+    if args.status_file:
+        from utils.status_tracker import StatusTracker
+        status_tracker = StatusTracker.load_from_file(Path(args.status_file), OUTPUT_PATH)
+        # Reinitialize with current file list
+        file_paths = [f for f in INPUT_PATH.iterdir() if f.is_file() and f.suffix == '.mat']
+        status_tracker.initialize(file_paths)
+
     # Get list of .mat files in input directory
-    file_names = [f.name for f in INPUT_PATH.iterdir() if f.is_file() and f.suffix == '.mat']
+    file_paths = [f for f in INPUT_PATH.iterdir() if f.is_file() and f.suffix == '.mat']
+    file_names = [f.name for f in file_paths]
     if len(file_names) == 0:
         print(f'No .mat files in {INPUT_PATH}')
 
-    for file_name in file_names:
+    for file_path in file_paths:
+        file_name = file_path.name
+
+        # Update status tracker - mark file as processing
+        if status_tracker:
+            status_tracker.set_processing(file_path)
+
         try:
             print(f"\n{'='*80}")
             print(f"Processing file: {file_name}")
@@ -340,6 +363,9 @@ if __name__ == "__main__":
             # Try to load channel selection JSON
             channel_selection = load_channel_selection_json(path)
             grids = get_grids_from_json(channel_selection)
+
+            # Track successful grid count for status tracker
+            successful_grids = 0
 
             # If grids are found in JSON, process each grid separately
             if grids:
@@ -395,6 +421,7 @@ if __name__ == "__main__":
                         export_to_muedit_mat(str(output_path).replace('.pkl', '.json'))
 
                         print(f"Grid {grid_key} processing complete!")
+                        successful_grids += 1
 
                     except Exception as e:
                         print(f"\n[ERROR] Failed to process grid {grid_key}: {str(e)}")
@@ -421,11 +448,22 @@ if __name__ == "__main__":
                 # Save decomposition result to muEdit compatible .mat format for manual cleaning
                 export_to_muedit_mat(str(output_path).replace('.pkl', '.json'))
 
+                successful_grids = 1  # Single output for non-grid case
+
+            # Mark file as done in status tracker
+            if status_tracker:
+                status_tracker.set_done(file_path, successful_grids)
+
         except Exception as e:
             print(f"\n[ERROR] Failed to process file {file_name}: {str(e)}")
             import traceback
             traceback.print_exc()
             print(f"Continuing with next file...\n")
+
+            # Mark file as failed in status tracker
+            if status_tracker:
+                status_tracker.set_failed(file_path, str(e))
+
             continue
 
     print('\n' + '='*80)

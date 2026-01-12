@@ -192,7 +192,7 @@ class JobExecutor:
 
         return return_code, duration, str(log_file_path)
 
-    def run_job_background(self, job: Dict) -> Tuple[int, str]:
+    def run_job_background(self, job: Dict) -> Tuple[int, str, str]:
         """
         Execute a job in the background (detached from this process).
 
@@ -200,7 +200,7 @@ class JobExecutor:
             job: Job dictionary with input_path, output_path, etc.
 
         Returns:
-            Tuple of (pid, log_file_path)
+            Tuple of (pid, log_file_path, status_file_path)
         """
         job_id = job['id']
         job_name = job['name']
@@ -217,6 +217,21 @@ class JobExecutor:
 
         start_time = datetime.now()
 
+        # Initialize status tracker and create status file
+        status_tracker = StatusTracker(output_dir, job_name=job_name)
+
+        # Find all processable files
+        sys.path.insert(0, str(Path.cwd()))
+        from main import find_processable_files
+        input_path_obj = Path(input_path)
+        files = find_processable_files(input_path_obj)
+
+        # Initialize status file with file list
+        if files:
+            status_tracker.initialize(files)
+
+        status_file_path = str(status_tracker.get_status_file_path())
+
         # Write initial log header
         with open(log_file_path, 'w', encoding='utf-8') as log_file:
             self._write_log_header(log_file, job, start_time)
@@ -225,7 +240,8 @@ class JobExecutor:
         python_exe = 'python3' if sys.platform != 'win32' else sys.executable
 
         # Prepare command (with -u for unbuffered output for real-time logging)
-        cmd = [python_exe, '-u', 'main.py', '-i', input_path, '-o', output_path]
+        # Pass status file path to main.py
+        cmd = [python_exe, '-u', 'main.py', '-i', input_path, '-o', output_path, '--status-file', status_file_path]
 
         # Start process in background (detached)
         # Platform-specific detachment
@@ -272,7 +288,7 @@ class JobExecutor:
         except:
             pass  # If psutil not available or permission denied, continue anyway
 
-        return pid, str(log_file_path)
+        return pid, str(log_file_path), status_file_path
 
     def run_job(self, job: Dict) -> Tuple[int, float, str]:
         """

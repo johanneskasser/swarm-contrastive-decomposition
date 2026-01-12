@@ -233,3 +233,28 @@ class StatusTracker:
             'processing': sum(1 for fs in self.files_status if fs['status'] == 'processing'),
             'waiting': sum(1 for fs in self.files_status if fs['status'] == 'waiting')
         }
+
+    @classmethod
+    def load_from_file(cls, status_file_path: Path, output_folder: Path) -> 'StatusTracker':
+        """
+        Load an existing StatusTracker from a status file.
+
+        Args:
+            status_file_path: Path to existing status file
+            output_folder: Output folder path
+
+        Returns:
+            StatusTracker instance with loaded state
+        """
+        tracker = cls.__new__(cls)
+        tracker.output_folder = output_folder
+        tracker.status_file = status_file_path
+        tracker.files_status = []
+        tracker.total_files = 0
+
+        # Try to reconstruct files_status from the directory
+        # Since the status file text format isn't easily parseable,
+        # we'll just reinitialize with the file list
+        # The status file itself will continue to be updated
+
+        return tracker
