@@ -69,16 +69,18 @@ def run_orchestrator(job_ids):
 
         # Execute job in background
         try:
-            pid, log_file = executor.run_job_background(job)
+            pid, log_file, status_file = executor.run_job_background(job)
             log_message(f"Job started with PID: {pid}")
             log_message(f"Log file: {log_file}")
+            log_message(f"Status file: {status_file}")
 
-            # Update job with PID and log file
+            # Update job with PID, log file, and status file
             job_manager.update_job_status(
                 job_id,
                 'running',
                 pid=pid,
-                log_file=log_file
+                log_file=log_file,
+                status_file=status_file
             )
 
             # Wait for job to complete

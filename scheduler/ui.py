@@ -344,7 +344,7 @@ class SchedulerUI:
         self._pause()
 
     def _run_all_pending_jobs(self):
-        """Run all pending jobs sequentially (one at a time, wait for completion)."""
+        """Run all pending jobs sequentially in the background."""
         pending_jobs = self.job_manager.list_jobs(status='pending')
 
         if not pending_jobs:
@@ -359,17 +359,10 @@ class SchedulerUI:
         for idx, job in enumerate(pending_jobs, 1):
             print(f"  {idx}. {job['name']}")
 
-        # Ask for execution mode
-        print("\nExecution mode:")
-        print("  1. Sequential Foreground (wait for each job) - RECOMMENDED")
-        print("  2. Sequential Background (jobs run one-by-one, can close scheduler)")
-        print("  3. Parallel Background (all jobs start immediately)")
-        mode = input("\nChoose mode (1/2/3) [1]: ").strip() or "1"
-
-        if mode not in ['1', '2', '3']:
-            print("\nInvalid choice. Cancelled.")
-            self._pause()
-            return
+        print("\nJobs will run sequentially in the background:")
+        print("  - Jobs run one at a time")
+        print("  - You can close the scheduler and jobs will continue")
+        print("  - View progress with option 1, 6, 7, or 8")
 
         confirm = input(f"\nStart execution? (y/n): ").strip().lower()
         if confirm != 'y':
@@ -377,56 +370,16 @@ class SchedulerUI:
             self._pause()
             return
 
-        # Execute jobs based on mode
-        total_jobs = len(pending_jobs)
-
-        if mode == '1':
-            # Mode 1: Sequential Foreground - wait for each job to finish
-            for idx, job in enumerate(pending_jobs, 1):
-                print("\n" + "=" * 80)
-                print(f"[Job {idx}/{total_jobs}] {job['name']}")
-                print("=" * 80)
-
-                self._execute_job_foreground(job)
-
-        elif mode == '2':
-            # Mode 2: Sequential Background - use orchestrator to manage jobs
-            print("\n💡 Sequential Background Mode:")
-            print("   - Jobs will run one at a time in the background")
-            print("   - You can close the scheduler and jobs will continue")
-            print("   - A background orchestrator will manage sequential execution")
-            print()
-
-            # Start orchestrator in background with all job IDs
-            self._start_orchestrator(pending_jobs)
-
-        else:
-            # Mode 3: Parallel Background - start all jobs immediately
-            print("\n⚠ Parallel Background Mode:")
-            print("   - All jobs will start immediately in parallel")
-            print("   - May cause resource competition and slower performance")
-            print("   - Jobs continue running if you close the scheduler")
-            print()
-
-            for idx, job in enumerate(pending_jobs, 1):
-                print("\n" + "=" * 80)
-                print(f"[Job {idx}/{total_jobs}] {job['name']}")
-                print("=" * 80)
-
-                self._execute_job(job)
+        # Start orchestrator in background with all job IDs
+        self._start_orchestrator(pending_jobs)
 
         print("\n" + "=" * 80)
-        if mode == '1':
-            print("ALL JOBS COMPLETED")
-        elif mode == '2':
-            print("ALL JOBS STARTED SEQUENTIALLY")
-        else:
-            print("ALL JOBS STARTED IN PARALLEL")
+        print("JOBS STARTED SEQUENTIALLY")
         print("=" * 80)
         self._pause()
 
     def _run_single_job(self):
-        """Run a single selected job."""
+        """Run a single selected job in the background."""
         jobs = self.job_manager.load_jobs()
 
         if not jobs:
@@ -455,158 +408,25 @@ class SchedulerUI:
             if 0 <= idx < len(jobs):
                 job = jobs[idx]
 
-                # Ask for execution mode
-                print("\nExecution mode:")
-                print("  1. Foreground (wait for completion) - RECOMMENDED")
-                print("  2. Background (continue immediately)")
-                mode = input("\nChoose mode (1/2) [1]: ").strip() or "1"
-
-                if mode not in ['1', '2']:
-                    print("\nInvalid choice. Cancelled.")
-                    self._pause()
-                    return
-
                 print("\n" + "=" * 80)
                 print(f"Running: {job['name']}")
                 print("=" * 80)
+                print("\nJob will run in the background.")
+                print("You can close the scheduler and the job will continue.")
+                print("View progress with option 1, 6, 7, or 8")
 
-                if mode == '1':
-                    self._execute_job_foreground(job)
-                    print("\n" + "=" * 80)
-                    print("JOB COMPLETED")
-                    print("=" * 80)
-                else:
-                    self._execute_job(job)
-                    print("\n" + "=" * 80)
-                    print("JOB STARTED IN BACKGROUND")
-                    print("=" * 80)
+                # Use orchestrator for single job too
+                self._start_orchestrator([job])
+
+                print("\n" + "=" * 80)
+                print("JOB STARTED IN BACKGROUND")
+                print("=" * 80)
             else:
                 print("\nInvalid job number.")
         except ValueError:
             print("\nInvalid input.")
 
         self._pause()
-
-    def _execute_job_foreground(self, job: dict):
-        """
-        Execute a single job in foreground (wait for completion).
-        Full performance - no resource competition with other jobs.
-        Uses file-by-file processing with individual tracking.
-
-        Args:
-            job: Job dictionary
-        """
-        job_id = job['id']
-        start_time = datetime.now()
-
-        # Update status to running
-        self.job_manager.update_job_status(
-            job_id,
-            'running',
-            started_at=start_time.isoformat()
-        )
-
-        print(f"\nInput:  {job['input_path']}")
-        print(f"Output: {job['output_path']}")
-        print(f"\nStarted: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print("-" * 80)
-        print()
-
-        try:
-            # Execute job with file tracking (blocking)
-            return_code, duration, log_file = self.executor.run_job_with_file_tracking(job, self.job_manager)
-
-            # Determine final status
-            end_time = datetime.now()
-            if return_code == 0:
-                final_status = 'completed'
-                status_text = "[OK] SUCCESS"
-            elif return_code == -1:
-                final_status = 'failed'
-                status_text = "[X] INTERRUPTED"
-            else:
-                final_status = 'failed'
-                status_text = f"[X] FAILED (exit code: {return_code})"
-
-            # Update job status
-            self.job_manager.update_job_status(
-                job_id,
-                final_status,
-                completed_at=end_time.isoformat(),
-                duration_seconds=duration,
-                return_code=return_code,
-                log_file=log_file
-            )
-
-            # Display summary with file statistics
-            job_data = self.job_manager.get_job(job_id)
-            total = job_data.get('total_files', 0)
-            successful = job_data.get('successful_files', 0)
-            failed = job_data.get('failed_files', 0)
-
-            print()
-            print("-" * 80)
-            print(f"Completed: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-            print(f"Duration: {self._format_duration(duration)}")
-            print(f"Status: {status_text}")
-            if total > 0:
-                print(f"Files: {total} total, {successful} successful, {failed} failed")
-            print(f"Log: {log_file}")
-
-        except Exception as e:
-            print(f"\n[X] Failed to execute job: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            self.job_manager.update_job_status(
-                job_id,
-                'failed',
-                completed_at=datetime.now().isoformat()
-            )
-
-    def _execute_job(self, job: dict):
-        """
-        Execute a single job in the background (non-blocking).
-        Job will continue running even if scheduler is closed.
-
-        Args:
-            job: Job dictionary
-        """
-        job_id = job['id']
-        start_time = datetime.now()
-
-        print(f"\nInput:  {job['input_path']}")
-        print(f"Output: {job['output_path']}")
-        print(f"\nStarting job in background...")
-        print("-" * 80)
-
-        try:
-            # Execute job in background (non-blocking)
-            pid, log_file, status_file = self.executor.run_job_background(job)
-
-            # Update status to running with PID and status file
-            self.job_manager.update_job_status(
-                job_id,
-                'running',
-                started_at=start_time.isoformat(),
-                log_file=log_file,
-                status_file=status_file,
-                pid=pid
-            )
-
-            print(f"\n[OK] Job started in background")
-            print(f"  PID: {pid}")
-            print(f"  Log: {log_file}")
-            print(f"  Status: {status_file}")
-            print(f"\nThe job will continue running even if you close the scheduler.")
-            print(f"You can monitor progress by viewing the status file (option 8) or log file (option 7).")
-
-        except Exception as e:
-            print(f"\n[X] Failed to start job: {str(e)}")
-            self.job_manager.update_job_status(
-                job_id,
-                'failed',
-                completed_at=datetime.now().isoformat()
-            )
 
     def _start_orchestrator(self, jobs):
         """
@@ -683,121 +503,6 @@ class SchedulerUI:
         except Exception as e:
             print(f"\n[X] Failed to start orchestrator: {str(e)}")
             print("\nJobs were not started.")
-
-    def _execute_job_sequential_background(self, job: dict, job_num: int, total_jobs: int):
-        """
-        Execute a job in background but wait for it to complete before returning.
-        This allows sequential execution while running in background (can close scheduler).
-
-        Args:
-            job: Job dictionary
-            job_num: Current job number (for display)
-            total_jobs: Total number of jobs (for display)
-        """
-        import time
-        try:
-            import psutil
-        except ImportError:
-            print("\n[X] psutil not installed. Sequential background mode requires psutil.")
-            print("  Install with: pip install psutil")
-            print("\n  Falling back to parallel background mode...")
-            self._execute_job(job)
-            return
-
-        job_id = job['id']
-        start_time = datetime.now()
-
-        print(f"\nInput:  {job['input_path']}")
-        print(f"Output: {job['output_path']}")
-        print(f"\nStarting job in background...")
-        print("-" * 80)
-
-        try:
-            # Execute job in background (non-blocking)
-            pid, log_file, status_file = self.executor.run_job_background(job)
-
-            # Update status to running with PID and status file
-            self.job_manager.update_job_status(
-                job_id,
-                'running',
-                started_at=start_time.isoformat(),
-                log_file=log_file,
-                status_file=status_file,
-                pid=pid
-            )
-
-            print(f"\n[OK] Job started in background")
-            print(f"  PID: {pid}")
-            print(f"  Log: {log_file}")
-            print(f"\nWaiting for job to complete before starting next job...")
-            print(f"(You can close this scheduler - the job will continue running)")
-            print("-" * 80)
-
-            # Poll the process until it completes
-            last_check = time.time()
-            check_interval = 5  # Check every 5 seconds
-
-            while True:
-                try:
-                    process = psutil.Process(pid)
-                    if not process.is_running():
-                        break
-
-                    # Show status update every 30 seconds
-                    if time.time() - last_check >= 30:
-                        elapsed = (datetime.now() - start_time).total_seconds()
-                        elapsed_str = self._format_duration(elapsed)
-                        print(f"  [Job {job_num}/{total_jobs}] Still running... (elapsed: {elapsed_str})")
-                        last_check = time.time()
-
-                    time.sleep(check_interval)
-
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    # Process has terminated
-                    break
-
-            # Job completed - determine final status from log file
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
-
-            return_code = None
-            if log_file and Path(log_file).exists():
-                try:
-                    with open(log_file, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        if 'Status: SUCCESS' in content:
-                            return_code = 0
-                        elif 'Status: FAILED' in content or 'Status: INTERRUPTED' in content:
-                            return_code = 1
-                except:
-                    pass
-
-            final_status = 'completed' if return_code == 0 else 'failed'
-            status_text = "[OK] SUCCESS" if return_code == 0 else "[X] FAILED"
-
-            self.job_manager.update_job_status(
-                job_id,
-                final_status,
-                completed_at=end_time.isoformat(),
-                return_code=return_code,
-                duration_seconds=duration,
-                pid=None
-            )
-
-            print()
-            print("-" * 80)
-            print(f"Completed: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-            print(f"Duration: {self._format_duration(duration)}")
-            print(f"Status: {status_text}")
-            print(f"Log: {log_file}")
-
-        except Exception as e:
-            print(f"\n[X] Failed to execute job: {str(e)}")
-            self.job_manager.update_job_status(
-                job_id,
-                'failed',
-                completed_at=datetime.now().isoformat()
-            )
 
     def _view_job_details(self):
         """Display detailed information about a specific job."""
