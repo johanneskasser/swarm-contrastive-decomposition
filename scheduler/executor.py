@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import Dict, Tuple, Optional, List
 import json
 
+# Import status tracker
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils.status_tracker import StatusTracker
+
 
 class JobExecutor:
     """Executes decomposition jobs and manages logging."""
@@ -60,6 +64,10 @@ class JobExecutor:
                 self._write_log_footer(log_file, end_time, duration, 1)
             return 1, duration, str(log_file_path)
 
+        # Initialize status tracker
+        status_tracker = StatusTracker(output_path, job_name=job_name)
+        status_tracker.initialize(files)
+
         # Update job with file list
         job_manager.update_job_files(job_id, [str(f) for f in files])
 
@@ -88,6 +96,9 @@ class JobExecutor:
                     # Update current file in job
                     job_manager.set_current_file(job_id, str(file_path))
 
+                    # Mark file as processing in status tracker
+                    status_tracker.set_processing(file_path)
+
                     # Process the file
                     file_start = datetime.now()
                     result = process_single_file(file_path, output_path)
@@ -102,11 +113,18 @@ class JobExecutor:
                         log_file.write(f"Grids processed: {len(result['grids_processed'])}\n")
                         for grid in result['grids_processed']:
                             log_file.write(f"  - {grid['grid_key']}: {grid['output_file']}\n")
+
+                        # Update status tracker with success
+                        output_count = len(result['grids_processed'])
+                        status_tracker.set_done(file_path, output_count)
                     else:
                         status_msg = f"[ERROR] Failed to process {file_path.name}: {result.get('error', 'Unknown error')}"
                         print(status_msg)
                         log_file.write(f"\n{status_msg}\n")
                         all_success = False
+
+                        # Update status tracker with failure
+                        status_tracker.set_failed(file_path, result.get('error', 'Unknown error'))
 
                     log_file.write("\n")
                     log_file.flush()
@@ -117,6 +135,7 @@ class JobExecutor:
                 except KeyboardInterrupt:
                     print("\n\nJob interrupted by user (Ctrl+C)")
                     log_file.write("\n\n[JOB INTERRUPTED BY USER]\n")
+                    status_tracker.set_failed(file_path, "Job interrupted by user")
                     all_success = False
                     break
 
@@ -130,6 +149,9 @@ class JobExecutor:
                     log_file.write(f"\n{traceback_str}\n")
                     log_file.flush()
 
+                    # Update status tracker with failure
+                    status_tracker.set_failed(file_path, str(e))
+
                     # Record failed file
                     result = {
                         'success': False,
@@ -139,6 +161,7 @@ class JobExecutor:
                     }
                     job_manager.add_processed_file(job_id, result)
                     all_success = False
+                    # IMPORTANT: Continue to next file instead of breaking
 
             # Calculate duration
             end_time = datetime.now()
@@ -154,6 +177,7 @@ class JobExecutor:
             summary += f"Total files: {total}\n"
             summary += f"Successful: {successful}\n"
             summary += f"Failed: {failed}\n"
+            summary += f"Status file: {status_tracker.get_status_file_path()}\n"
             summary += f"{'='*80}\n"
             print(summary)
             log_file.write(summary)
