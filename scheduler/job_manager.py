@@ -136,7 +136,8 @@ class JobManager:
             "jobs": [],
             "hooks": {
                 "on_all_jobs_completed": None
-            }
+            },
+            "global_algorithm_params": None  # None means use DEFAULT_ALGORITHM_PARAMS
         }
 
     def save_jobs(self):
@@ -168,7 +169,7 @@ class JobManager:
             input_path: Path to input directory with .mat files
             output_path: Path to output directory
             description: Optional job description
-            algorithm_params: Optional dict of algorithm parameters (uses defaults if not provided)
+            algorithm_params: Optional dict of algorithm parameters (uses global params if not provided)
 
         Returns:
             The created job dictionary
@@ -186,8 +187,9 @@ class JobManager:
         # Generate unique job ID
         job_id = self._generate_job_id()
 
-        # Merge provided params with defaults
-        params = DEFAULT_ALGORITHM_PARAMS.copy()
+        # Start with global params (which falls back to DEFAULT_ALGORITHM_PARAMS if not set)
+        params = self.get_global_params()
+        # Override with job-specific params if provided
         if algorithm_params:
             params.update(algorithm_params)
 
@@ -539,3 +541,77 @@ class JobManager:
 
         job['algorithm_params'] = DEFAULT_ALGORITHM_PARAMS.copy()
         self.save_jobs()
+
+    # --- Global Algorithm Parameters ---
+
+    def get_global_params(self) -> Dict[str, Any]:
+        """
+        Get global algorithm parameters.
+
+        Returns:
+            Dictionary of global algorithm parameters.
+            Returns DEFAULT_ALGORITHM_PARAMS if no global params are set.
+        """
+        global_params = self.jobs_data.get('global_algorithm_params')
+        if global_params is None:
+            return DEFAULT_ALGORITHM_PARAMS.copy()
+        # Merge with defaults to ensure all keys exist
+        result = DEFAULT_ALGORITHM_PARAMS.copy()
+        result.update(global_params)
+        return result
+
+    def set_global_params(self, params: Dict[str, Any]):
+        """
+        Set global algorithm parameters.
+
+        Args:
+            params: Dictionary of parameter names and values to set globally.
+        """
+        # Validate all keys
+        for key in params:
+            if key not in DEFAULT_ALGORITHM_PARAMS:
+                raise ValueError(f"Unknown algorithm parameter: {key}")
+
+        # Initialize if not exists
+        if self.jobs_data.get('global_algorithm_params') is None:
+            self.jobs_data['global_algorithm_params'] = DEFAULT_ALGORITHM_PARAMS.copy()
+
+        # Update only provided parameters
+        self.jobs_data['global_algorithm_params'].update(params)
+        self.save_jobs()
+
+    def update_global_param(self, param_key: str, value: Any):
+        """
+        Update a single global algorithm parameter.
+
+        Args:
+            param_key: Name of the parameter
+            value: New value for the parameter
+        """
+        if param_key not in DEFAULT_ALGORITHM_PARAMS:
+            raise ValueError(f"Unknown algorithm parameter: {param_key}")
+
+        if self.jobs_data.get('global_algorithm_params') is None:
+            self.jobs_data['global_algorithm_params'] = DEFAULT_ALGORITHM_PARAMS.copy()
+
+        self.jobs_data['global_algorithm_params'][param_key] = value
+        self.save_jobs()
+
+    def reset_global_params(self):
+        """
+        Reset global algorithm parameters to defaults.
+
+        This sets global_algorithm_params to None, meaning DEFAULT_ALGORITHM_PARAMS
+        will be used.
+        """
+        self.jobs_data['global_algorithm_params'] = None
+        self.save_jobs()
+
+    def has_custom_global_params(self) -> bool:
+        """
+        Check if custom global parameters are set.
+
+        Returns:
+            True if global_algorithm_params is set (not None), False otherwise.
+        """
+        return self.jobs_data.get('global_algorithm_params') is not None

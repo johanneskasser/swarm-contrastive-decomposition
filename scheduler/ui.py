@@ -74,7 +74,7 @@ class SchedulerUI:
             self._clear_screen()
             self._display_menu()
 
-            choice = input("\nEnter choice (1-14): ").strip()
+            choice = input("\nEnter choice (1-15): ").strip()
 
             if choice == '1':
                 self._view_all_jobs()
@@ -103,10 +103,12 @@ class SchedulerUI:
             elif choice == '13':
                 self._configure_algorithm_params()
             elif choice == '14':
+                self._configure_global_params()
+            elif choice == '15':
                 print("\nExiting scheduler. Goodbye!")
                 break
             else:
-                print("\nInvalid choice. Please enter a number between 1 and 14.")
+                print("\nInvalid choice. Please enter a number between 1 and 15.")
                 self._pause()
 
     def _clear_screen(self):
@@ -226,8 +228,9 @@ class SchedulerUI:
         print(" 10. Retry failed jobs")
         print(" 11. Configure completion hook")
         print(" 12. Kill running job")
-        print(" 13. Configure algorithm parameters")
-        print(" 14. Exit")
+        print(" 13. Configure job algorithm parameters")
+        print(" 14. Configure GLOBAL algorithm parameters")
+        print(" 15. Exit")
         print()
 
     def _view_all_jobs(self):
@@ -1400,6 +1403,187 @@ class SchedulerUI:
             self.job_manager.update_job_params(job['id'], {param_key: new_value})
             job['algorithm_params'] = self.job_manager.get_job_params(job['id'])
             print(f"\n[OK] {param_key} updated to: {new_value}")
+        except Exception as e:
+            print(f"\n[X] Error updating parameter: {e}")
+
+    def _configure_global_params(self):
+        """Configure global algorithm parameters (defaults for new jobs)."""
+        while True:
+            # Get current global params
+            params = self.job_manager.get_global_params()
+            has_custom = self.job_manager.has_custom_global_params()
+
+            print("\n" + "=" * 80)
+            print("GLOBAL ALGORITHM PARAMETERS")
+            print("=" * 80)
+            print()
+            if has_custom:
+                print("  Status: Custom global parameters are set")
+            else:
+                print("  Status: Using built-in defaults")
+            print("  Note: New jobs will inherit these parameters")
+            print()
+
+            # Display parameters in a numbered list
+            param_keys = list(DEFAULT_ALGORITHM_PARAMS.keys())
+            for idx, key in enumerate(param_keys, 1):
+                value = params.get(key, DEFAULT_ALGORITHM_PARAMS[key])
+                meta = ALGORITHM_PARAMS_METADATA.get(key, {})
+
+                # Format value display
+                if isinstance(value, bool):
+                    value_str = "True" if value else "False"
+                elif isinstance(value, list):
+                    value_str = str(value)
+                elif isinstance(value, float):
+                    value_str = f"{value:.3f}"
+                else:
+                    value_str = str(value)
+
+                # Check if different from built-in default
+                default = DEFAULT_ALGORITHM_PARAMS[key]
+                marker = " *" if value != default else ""
+
+                print(f"  {idx:2d}. {key:<28s} = {value_str:<15s}{marker}")
+
+            print()
+            print("  * = modified from built-in default")
+            print()
+            print("Options:")
+            print("  Enter parameter number (1-13) to modify")
+            print("  'r' = Reset all to built-in defaults")
+            print("  'd' = Show parameter descriptions")
+            print("  'q' = Done (save and return)")
+            print()
+
+            choice = input("Choice: ").strip().lower()
+
+            if choice == 'q':
+                break
+            elif choice == 'r':
+                confirm = input("\nReset all global parameters to built-in defaults? (y/n): ").strip().lower()
+                if confirm == 'y':
+                    self.job_manager.reset_global_params()
+                    print("\n[OK] Global parameters reset to built-in defaults.")
+            elif choice == 'd':
+                self._show_param_descriptions()
+            else:
+                try:
+                    param_idx = int(choice) - 1
+                    if 0 <= param_idx < len(param_keys):
+                        param_key = param_keys[param_idx]
+                        self._edit_global_param(param_key, params)
+                    else:
+                        print("\nInvalid parameter number.")
+                except ValueError:
+                    print("\nInvalid input.")
+
+        self._pause()
+
+    def _edit_global_param(self, param_key: str, params: dict):
+        """Edit a single global parameter value."""
+        meta = ALGORITHM_PARAMS_METADATA.get(param_key, {})
+        param_type = meta.get('type', 'str')
+        current_value = params.get(param_key, DEFAULT_ALGORITHM_PARAMS[param_key])
+        default_value = DEFAULT_ALGORITHM_PARAMS[param_key]
+
+        print(f"\n--- Editing Global: {param_key} ---")
+        print(f"Description: {meta.get('description', 'No description')}")
+        print(f"Current value: {current_value}")
+        print(f"Built-in default: {default_value}")
+
+        if param_type == 'bool':
+            print("\nEnter 'true' or 'false' (or 't'/'f'):")
+            new_value_str = input(f"New value [{current_value}]: ").strip().lower()
+
+            if not new_value_str:
+                return  # Keep current value
+
+            if new_value_str in ('true', 't', '1', 'yes', 'y'):
+                new_value = True
+            elif new_value_str in ('false', 'f', '0', 'no', 'n'):
+                new_value = False
+            else:
+                print("Invalid boolean value.")
+                return
+
+        elif param_type == 'int':
+            min_val = meta.get('min', 0)
+            max_val = meta.get('max', 10000)
+            print(f"\nEnter integer value ({min_val} - {max_val}):")
+            new_value_str = input(f"New value [{current_value}]: ").strip()
+
+            if not new_value_str:
+                return  # Keep current value
+
+            try:
+                new_value = int(new_value_str)
+                if new_value < min_val or new_value > max_val:
+                    print(f"Value must be between {min_val} and {max_val}.")
+                    return
+            except ValueError:
+                print("Invalid integer value.")
+                return
+
+        elif param_type == 'float':
+            min_val = meta.get('min', 0.0)
+            max_val = meta.get('max', 1.0)
+            print(f"\nEnter decimal value ({min_val} - {max_val}):")
+            new_value_str = input(f"New value [{current_value}]: ").strip()
+
+            if not new_value_str:
+                return  # Keep current value
+
+            try:
+                new_value = float(new_value_str)
+                if new_value < min_val or new_value > max_val:
+                    print(f"Value must be between {min_val} and {max_val}.")
+                    return
+            except ValueError:
+                print("Invalid decimal value.")
+                return
+
+        elif param_type == 'list':
+            # Special handling for notch_params
+            if param_key == 'notch_params':
+                print("\nNotch filter parameters: [frequency, bandwidth, filter_harmonics]")
+                print("Example: 50, 1.0, true")
+                print("  frequency: powerline frequency in Hz (usually 50 or 60)")
+                print("  bandwidth: filter bandwidth")
+                print("  filter_harmonics: true/false to filter harmonic frequencies")
+                print()
+                new_value_str = input(f"New value (comma-separated) [{current_value}]: ").strip()
+
+                if not new_value_str:
+                    return  # Keep current value
+
+                try:
+                    parts = [p.strip() for p in new_value_str.split(',')]
+                    if len(parts) != 3:
+                        print("Need exactly 3 values: frequency, bandwidth, filter_harmonics")
+                        return
+
+                    freq = int(parts[0])
+                    bandwidth = float(parts[1])
+                    harmonics = parts[2].lower() in ('true', 't', '1', 'yes', 'y')
+                    new_value = [freq, bandwidth, harmonics]
+                except (ValueError, IndexError):
+                    print("Invalid format. Use: frequency, bandwidth, true/false")
+                    return
+            else:
+                print("\nEnter values as comma-separated list:")
+                new_value_str = input(f"New value [{current_value}]: ").strip()
+                if not new_value_str:
+                    return
+                new_value = [v.strip() for v in new_value_str.split(',')]
+        else:
+            print(f"\nUnknown parameter type: {param_type}")
+            return
+
+        # Update the global parameter
+        try:
+            self.job_manager.update_global_param(param_key, new_value)
+            print(f"\n[OK] Global {param_key} updated to: {new_value}")
         except Exception as e:
             print(f"\n[X] Error updating parameter: {e}")
 
