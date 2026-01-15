@@ -19,7 +19,7 @@ except ImportError:
     READLINE_AVAILABLE = False
     print("Note: Install 'pyreadline3' for path auto-completion on Windows")
 
-from .job_manager import JobManager
+from .job_manager import JobManager, DEFAULT_ALGORITHM_PARAMS, ALGORITHM_PARAMS_METADATA
 from .executor import JobExecutor
 
 
@@ -74,7 +74,7 @@ class SchedulerUI:
             self._clear_screen()
             self._display_menu()
 
-            choice = input("\nEnter choice (1-13): ").strip()
+            choice = input("\nEnter choice (1-14): ").strip()
 
             if choice == '1':
                 self._view_all_jobs()
@@ -101,10 +101,12 @@ class SchedulerUI:
             elif choice == '12':
                 self._kill_running_job()
             elif choice == '13':
+                self._configure_algorithm_params()
+            elif choice == '14':
                 print("\nExiting scheduler. Goodbye!")
                 break
             else:
-                print("\nInvalid choice. Please enter a number between 1 and 13.")
+                print("\nInvalid choice. Please enter a number between 1 and 14.")
                 self._pause()
 
     def _clear_screen(self):
@@ -224,7 +226,8 @@ class SchedulerUI:
         print(" 10. Retry failed jobs")
         print(" 11. Configure completion hook")
         print(" 12. Kill running job")
-        print(" 13. Exit")
+        print(" 13. Configure algorithm parameters")
+        print(" 14. Exit")
         print()
 
     def _view_all_jobs(self):
@@ -1178,6 +1181,249 @@ class SchedulerUI:
             print("\nInvalid choice.")
 
         self._pause()
+
+    def _configure_algorithm_params(self):
+        """Configure algorithm parameters for a job."""
+        jobs = self.job_manager.load_jobs()
+
+        if not jobs:
+            print("\nNo jobs available. Add a job first.")
+            self._pause()
+            return
+
+        # Filter to only pending jobs (can't change params of running/completed jobs)
+        pending_jobs = [j for j in jobs if j['status'] == 'pending']
+
+        if not pending_jobs:
+            print("\nNo pending jobs available.")
+            print("Algorithm parameters can only be configured for pending jobs.")
+            self._pause()
+            return
+
+        # Show pending jobs
+        print("\n" + "=" * 80)
+        print("CONFIGURE ALGORITHM PARAMETERS")
+        print("=" * 80)
+        print("\nSelect a pending job to configure:")
+        print()
+
+        for idx, job in enumerate(pending_jobs, 1):
+            print(f"  {idx}. {job['name']}")
+
+        print()
+        choice = input("Enter job number (or 'c' to cancel): ").strip()
+
+        if choice.lower() == 'c':
+            return
+
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(pending_jobs):
+                job = pending_jobs[idx]
+                self._edit_job_params(job)
+            else:
+                print("\nInvalid job number.")
+        except ValueError:
+            print("\nInvalid input.")
+
+        self._pause()
+
+    def _edit_job_params(self, job: dict):
+        """Edit algorithm parameters for a specific job."""
+        while True:
+            # Get current params (with defaults for backward compatibility)
+            params = job.get('algorithm_params', DEFAULT_ALGORITHM_PARAMS.copy())
+
+            print("\n" + "=" * 80)
+            print(f"ALGORITHM PARAMETERS: {job['name']}")
+            print("=" * 80)
+            print()
+
+            # Display parameters in a numbered list
+            param_keys = list(DEFAULT_ALGORITHM_PARAMS.keys())
+            for idx, key in enumerate(param_keys, 1):
+                value = params.get(key, DEFAULT_ALGORITHM_PARAMS[key])
+                meta = ALGORITHM_PARAMS_METADATA.get(key, {})
+                desc = meta.get('description', '')
+
+                # Format value display
+                if isinstance(value, bool):
+                    value_str = "True" if value else "False"
+                elif isinstance(value, list):
+                    value_str = str(value)
+                elif isinstance(value, float):
+                    value_str = f"{value:.3f}"
+                else:
+                    value_str = str(value)
+
+                # Check if different from default
+                default = DEFAULT_ALGORITHM_PARAMS[key]
+                marker = " *" if value != default else ""
+
+                print(f"  {idx:2d}. {key:<28s} = {value_str:<15s}{marker}")
+
+            print()
+            print("  * = modified from default")
+            print()
+            print("Options:")
+            print("  Enter parameter number (1-13) to modify")
+            print("  'r' = Reset all to defaults")
+            print("  'd' = Show parameter descriptions")
+            print("  'q' = Done (save and return)")
+            print()
+
+            choice = input("Choice: ").strip().lower()
+
+            if choice == 'q':
+                break
+            elif choice == 'r':
+                confirm = input("\nReset all parameters to defaults? (y/n): ").strip().lower()
+                if confirm == 'y':
+                    self.job_manager.reset_job_params(job['id'])
+                    job['algorithm_params'] = DEFAULT_ALGORITHM_PARAMS.copy()
+                    print("\n[OK] Parameters reset to defaults.")
+            elif choice == 'd':
+                self._show_param_descriptions()
+            else:
+                try:
+                    param_idx = int(choice) - 1
+                    if 0 <= param_idx < len(param_keys):
+                        param_key = param_keys[param_idx]
+                        self._edit_single_param(job, param_key, params)
+                    else:
+                        print("\nInvalid parameter number.")
+                except ValueError:
+                    print("\nInvalid input.")
+
+    def _edit_single_param(self, job: dict, param_key: str, params: dict):
+        """Edit a single parameter value."""
+        meta = ALGORITHM_PARAMS_METADATA.get(param_key, {})
+        param_type = meta.get('type', 'str')
+        current_value = params.get(param_key, DEFAULT_ALGORITHM_PARAMS[param_key])
+        default_value = DEFAULT_ALGORITHM_PARAMS[param_key]
+
+        print(f"\n--- Editing: {param_key} ---")
+        print(f"Description: {meta.get('description', 'No description')}")
+        print(f"Current value: {current_value}")
+        print(f"Default value: {default_value}")
+
+        if param_type == 'bool':
+            print("\nEnter 'true' or 'false' (or 't'/'f'):")
+            new_value_str = input(f"New value [{current_value}]: ").strip().lower()
+
+            if not new_value_str:
+                return  # Keep current value
+
+            if new_value_str in ('true', 't', '1', 'yes', 'y'):
+                new_value = True
+            elif new_value_str in ('false', 'f', '0', 'no', 'n'):
+                new_value = False
+            else:
+                print("Invalid boolean value.")
+                return
+
+        elif param_type == 'int':
+            min_val = meta.get('min', 0)
+            max_val = meta.get('max', 10000)
+            print(f"\nEnter integer value ({min_val} - {max_val}):")
+            new_value_str = input(f"New value [{current_value}]: ").strip()
+
+            if not new_value_str:
+                return  # Keep current value
+
+            try:
+                new_value = int(new_value_str)
+                if new_value < min_val or new_value > max_val:
+                    print(f"Value must be between {min_val} and {max_val}.")
+                    return
+            except ValueError:
+                print("Invalid integer value.")
+                return
+
+        elif param_type == 'float':
+            min_val = meta.get('min', 0.0)
+            max_val = meta.get('max', 1.0)
+            print(f"\nEnter decimal value ({min_val} - {max_val}):")
+            new_value_str = input(f"New value [{current_value}]: ").strip()
+
+            if not new_value_str:
+                return  # Keep current value
+
+            try:
+                new_value = float(new_value_str)
+                if new_value < min_val or new_value > max_val:
+                    print(f"Value must be between {min_val} and {max_val}.")
+                    return
+            except ValueError:
+                print("Invalid decimal value.")
+                return
+
+        elif param_type == 'list':
+            # Special handling for notch_params
+            if param_key == 'notch_params':
+                print("\nNotch filter parameters: [frequency, bandwidth, filter_harmonics]")
+                print("Example: 50, 1.0, true")
+                print("  frequency: powerline frequency in Hz (usually 50 or 60)")
+                print("  bandwidth: filter bandwidth")
+                print("  filter_harmonics: true/false to filter harmonic frequencies")
+                print()
+                new_value_str = input(f"New value (comma-separated) [{current_value}]: ").strip()
+
+                if not new_value_str:
+                    return  # Keep current value
+
+                try:
+                    parts = [p.strip() for p in new_value_str.split(',')]
+                    if len(parts) != 3:
+                        print("Need exactly 3 values: frequency, bandwidth, filter_harmonics")
+                        return
+
+                    freq = int(parts[0])
+                    bandwidth = float(parts[1])
+                    harmonics = parts[2].lower() in ('true', 't', '1', 'yes', 'y')
+                    new_value = [freq, bandwidth, harmonics]
+                except (ValueError, IndexError):
+                    print("Invalid format. Use: frequency, bandwidth, true/false")
+                    return
+            else:
+                print("\nEnter values as comma-separated list:")
+                new_value_str = input(f"New value [{current_value}]: ").strip()
+                if not new_value_str:
+                    return
+                new_value = [v.strip() for v in new_value_str.split(',')]
+        else:
+            print(f"\nUnknown parameter type: {param_type}")
+            return
+
+        # Update the parameter
+        try:
+            self.job_manager.update_job_params(job['id'], {param_key: new_value})
+            job['algorithm_params'] = self.job_manager.get_job_params(job['id'])
+            print(f"\n[OK] {param_key} updated to: {new_value}")
+        except Exception as e:
+            print(f"\n[X] Error updating parameter: {e}")
+
+    def _show_param_descriptions(self):
+        """Show detailed descriptions for all parameters."""
+        print("\n" + "=" * 80)
+        print("PARAMETER DESCRIPTIONS")
+        print("=" * 80)
+        print()
+
+        for key, meta in ALGORITHM_PARAMS_METADATA.items():
+            default = DEFAULT_ALGORITHM_PARAMS[key]
+            param_type = meta.get('type', 'unknown')
+            desc = meta.get('description', 'No description')
+
+            print(f"{key}")
+            print(f"  Type: {param_type}")
+            print(f"  Default: {default}")
+            if 'min' in meta and 'max' in meta:
+                print(f"  Range: {meta['min']} - {meta['max']}")
+            print(f"  {desc}")
+            print()
+
+        input("Press Enter to continue...")
 
     def _format_status(self, status: str) -> str:
         """Format status with visual indicators."""

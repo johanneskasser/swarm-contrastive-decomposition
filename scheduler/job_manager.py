@@ -8,7 +8,98 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
+
+
+# Default algorithm parameters for decomposition
+# These match the defaults in main.py train() function
+DEFAULT_ALGORITHM_PARAMS = {
+    "acceptance_silhouette": 0.88,
+    "max_iterations": 250,
+    "sampling_frequency": 2000,
+    "remove_bad_fr": True,
+    "low_pass_cutoff": 500,
+    "high_pass_cutoff": 10,
+    "extension_factor": 20,
+    "peel_off_window_size_ms": 50,
+    "notch_params": [50, 1.0, True],
+    "time_differentiate": False,
+    "use_coeff_var_fitness": True,
+    "clamp_percentile": 0.999,
+    "output_final_source_plot": False
+}
+
+# Parameter metadata for UI display and validation
+ALGORITHM_PARAMS_METADATA = {
+    "acceptance_silhouette": {
+        "type": "float",
+        "min": 0.5,
+        "max": 1.0,
+        "description": "Quality threshold for accepting motor units (0.5-1.0)"
+    },
+    "max_iterations": {
+        "type": "int",
+        "min": 10,
+        "max": 1000,
+        "description": "Maximum decomposition iterations"
+    },
+    "sampling_frequency": {
+        "type": "int",
+        "min": 100,
+        "max": 10000,
+        "description": "Sampling frequency in Hz (often auto-detected)"
+    },
+    "remove_bad_fr": {
+        "type": "bool",
+        "description": "Filter sources by physiological firing rate (2-100 Hz)"
+    },
+    "low_pass_cutoff": {
+        "type": "int",
+        "min": 100,
+        "max": 2000,
+        "description": "Low-pass filter cutoff frequency in Hz"
+    },
+    "high_pass_cutoff": {
+        "type": "int",
+        "min": 1,
+        "max": 100,
+        "description": "High-pass filter cutoff frequency in Hz"
+    },
+    "extension_factor": {
+        "type": "int",
+        "min": 1,
+        "max": 100,
+        "description": "Temporal extension factor (typically 1000/num_channels)"
+    },
+    "peel_off_window_size_ms": {
+        "type": "int",
+        "min": 10,
+        "max": 200,
+        "description": "Window size for spike-triggered averaging in ms"
+    },
+    "notch_params": {
+        "type": "list",
+        "description": "Notch filter: [frequency Hz, bandwidth, filter_harmonics]"
+    },
+    "time_differentiate": {
+        "type": "bool",
+        "description": "Apply time differentiation preprocessing"
+    },
+    "use_coeff_var_fitness": {
+        "type": "bool",
+        "description": "Use coefficient of variation fitness metric"
+    },
+    "clamp_percentile": {
+        "type": "float",
+        "min": 0.9,
+        "max": 1.0,
+        "description": "Percentile for outlier clamping (0.9-1.0)"
+    },
+    "output_final_source_plot": {
+        "type": "bool",
+        "description": "Generate plots of accepted motor unit sources"
+    }
+}
 
 
 class JobManager:
@@ -68,7 +159,7 @@ class JobManager:
         return self.jobs_data.get("jobs", [])
 
     def add_job(self, name: str, input_path: str, output_path: str,
-                description: str = "") -> Dict:
+                description: str = "", algorithm_params: Optional[Dict[str, Any]] = None) -> Dict:
         """
         Add a new job to the configuration.
 
@@ -77,6 +168,7 @@ class JobManager:
             input_path: Path to input directory with .mat files
             output_path: Path to output directory
             description: Optional job description
+            algorithm_params: Optional dict of algorithm parameters (uses defaults if not provided)
 
         Returns:
             The created job dictionary
@@ -93,6 +185,11 @@ class JobManager:
 
         # Generate unique job ID
         job_id = self._generate_job_id()
+
+        # Merge provided params with defaults
+        params = DEFAULT_ALGORITHM_PARAMS.copy()
+        if algorithm_params:
+            params.update(algorithm_params)
 
         # Create job object
         job = {
@@ -115,7 +212,8 @@ class JobManager:
             "current_file": None,  # Currently processing file
             "total_files": 0,
             "successful_files": 0,
-            "failed_files": 0
+            "failed_files": 0,
+            "algorithm_params": params  # Algorithm parameters for decomposition
         }
 
         # Add to jobs list
@@ -384,4 +482,60 @@ class JobManager:
             raise ValueError(f"Job with ID '{job_id}' not found")
 
         job['current_file'] = str(file_path) if file_path else None
+        self.save_jobs()
+
+    def update_job_params(self, job_id: str, params: Dict[str, Any]):
+        """
+        Update algorithm parameters for a job.
+
+        Args:
+            job_id: Job ID to update
+            params: Dictionary of parameter names and values to update
+        """
+        job = self.get_job(job_id)
+        if not job:
+            raise ValueError(f"Job with ID '{job_id}' not found")
+
+        # Ensure algorithm_params exists (for backward compatibility with old jobs)
+        if 'algorithm_params' not in job:
+            job['algorithm_params'] = DEFAULT_ALGORITHM_PARAMS.copy()
+
+        # Update only the provided parameters
+        for key, value in params.items():
+            if key in DEFAULT_ALGORITHM_PARAMS:
+                job['algorithm_params'][key] = value
+            else:
+                raise ValueError(f"Unknown algorithm parameter: {key}")
+
+        self.save_jobs()
+
+    def get_job_params(self, job_id: str) -> Dict[str, Any]:
+        """
+        Get algorithm parameters for a job.
+
+        Args:
+            job_id: Job ID to retrieve params for
+
+        Returns:
+            Dictionary of algorithm parameters
+        """
+        job = self.get_job(job_id)
+        if not job:
+            raise ValueError(f"Job with ID '{job_id}' not found")
+
+        # Return existing params or defaults (for backward compatibility)
+        return job.get('algorithm_params', DEFAULT_ALGORITHM_PARAMS.copy())
+
+    def reset_job_params(self, job_id: str):
+        """
+        Reset algorithm parameters for a job to defaults.
+
+        Args:
+            job_id: Job ID to reset params for
+        """
+        job = self.get_job(job_id)
+        if not job:
+            raise ValueError(f"Job with ID '{job_id}' not found")
+
+        job['algorithm_params'] = DEFAULT_ALGORITHM_PARAMS.copy()
         self.save_jobs()

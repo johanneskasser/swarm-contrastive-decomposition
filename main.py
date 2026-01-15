@@ -39,14 +39,14 @@ def find_processable_files(input_path: Path) -> List[Path]:
 
 
 def process_single_file(file_path: Path, output_folder: Path,
-                       config_overrides: Optional[Dict] = None) -> Dict:
+                       algorithm_params: Optional[Dict] = None) -> Dict:
     """
     Process a single .mat file through the SCD algorithm.
 
     Args:
         file_path: Path to the .mat file to process
         output_folder: Output directory for results
-        config_overrides: Optional configuration overrides
+        algorithm_params: Optional dict of algorithm parameters
 
     Returns:
         Dictionary with processing results:
@@ -114,7 +114,8 @@ def process_single_file(file_path: Path, output_folder: Path,
                 # Train model for this grid
                 dictionary, _, mat, config = train(file_path, grid_info=grid_info,
                                                   grid_suffix=f"_{grid_key}",
-                                                  output_folder=output_folder)
+                                                  output_folder=output_folder,
+                                                  algorithm_params=algorithm_params)
 
                 # Save results
                 save_results(output_path, dictionary)
@@ -142,7 +143,8 @@ def process_single_file(file_path: Path, output_folder: Path,
 
             output_path = output_folder.joinpath(file_path.stem).with_suffix(".pkl")
 
-            dictionary, _, mat, config = train(file_path, output_folder=output_folder)
+            dictionary, _, mat, config = train(file_path, output_folder=output_folder,
+                                              algorithm_params=algorithm_params)
 
             save_results(output_path, dictionary)
             print(f"Saved results to {output_path}")
@@ -174,10 +176,22 @@ def process_single_file(file_path: Path, output_folder: Path,
     return result
 
 
-def train(path, grid_info=None, grid_suffix="", output_folder=None):
+def train(path, grid_info=None, grid_suffix="", output_folder=None, algorithm_params=None):
+    """
+    Train the Swarm-Contrastive Decomposition model on EMG data.
+
+    Args:
+        path: Path to the .mat or .npy file
+        grid_info: Optional grid configuration from channel selection JSON
+        grid_suffix: Optional suffix for output filenames
+        output_folder: Output directory for results
+        algorithm_params: Optional dict of algorithm parameters (uses defaults if not provided)
+    """
     print(path)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
+
+    # Default parameters
     acceptance_silhouette = 0.88
     extension_factor = 20 # will be updated
     time_differentiate = False
@@ -193,6 +207,22 @@ def train(path, grid_info=None, grid_suffix="", output_folder=None):
     use_coeff_var_fitness = True
     remove_bad_fr = True
     clamp_percentile = 0.999
+
+    # Override with provided algorithm parameters
+    if algorithm_params:
+        acceptance_silhouette = algorithm_params.get('acceptance_silhouette', acceptance_silhouette)
+        extension_factor = algorithm_params.get('extension_factor', extension_factor)
+        time_differentiate = algorithm_params.get('time_differentiate', time_differentiate)
+        notch_params = algorithm_params.get('notch_params', notch_params)
+        low_pass_cutoff = algorithm_params.get('low_pass_cutoff', low_pass_cutoff)
+        high_pass_cutoff = algorithm_params.get('high_pass_cutoff', high_pass_cutoff)
+        max_iterations = algorithm_params.get('max_iterations', max_iterations)
+        sampling_frequency = algorithm_params.get('sampling_frequency', sampling_frequency)
+        peel_off_window_size_ms = algorithm_params.get('peel_off_window_size_ms', peel_off_window_size_ms)
+        output_final_source_plot = algorithm_params.get('output_final_source_plot', output_final_source_plot)
+        use_coeff_var_fitness = algorithm_params.get('use_coeff_var_fitness', use_coeff_var_fitness)
+        remove_bad_fr = algorithm_params.get('remove_bad_fr', remove_bad_fr)
+        clamp_percentile = algorithm_params.get('clamp_percentile', clamp_percentile)
 
     config = Config(
         device=device,
@@ -309,6 +339,13 @@ Examples:
         help='Path to status file for tracking progress (used by scheduler)'
     )
 
+    parser.add_argument(
+        '--params-file', '-p',
+        type=str,
+        default=None,
+        help='Path to JSON file containing algorithm parameters (used by scheduler)'
+    )
+
     return parser.parse_args()
 
 
@@ -339,6 +376,22 @@ if __name__ == "__main__":
         # Reinitialize with current file list
         file_paths = [f for f in INPUT_PATH.iterdir() if f.is_file() and f.suffix == '.mat']
         status_tracker.initialize(file_paths)
+
+    # Load algorithm parameters from JSON file if provided
+    algorithm_params = None
+    if args.params_file:
+        import json
+        params_path = Path(args.params_file)
+        if params_path.exists():
+            with open(params_path, 'r', encoding='utf-8') as f:
+                algorithm_params = json.load(f)
+            print(f"Loaded algorithm parameters from: {params_path}")
+            # Print key parameters
+            print(f"  acceptance_silhouette: {algorithm_params.get('acceptance_silhouette', 'default')}")
+            print(f"  max_iterations: {algorithm_params.get('max_iterations', 'default')}")
+            print(f"  sampling_frequency: {algorithm_params.get('sampling_frequency', 'default')}")
+        else:
+            print(f"Warning: Parameters file not found: {params_path}")
 
     # Get list of .mat files in input directory
     file_paths = [f for f in INPUT_PATH.iterdir() if f.is_file() and f.suffix == '.mat']
@@ -407,7 +460,8 @@ if __name__ == "__main__":
                         ).with_suffix(".pkl")
 
                         # Train model for this grid
-                        dictionary, _, mat, config = train(path, grid_info=grid_info, grid_suffix=f"_{grid_key}", output_folder=OUTPUT_PATH)
+                        dictionary, _, mat, config = train(path, grid_info=grid_info, grid_suffix=f"_{grid_key}",
+                                                          output_folder=OUTPUT_PATH, algorithm_params=algorithm_params)
 
                         # Save results
                         save_results(output_path, dictionary)
@@ -436,7 +490,8 @@ if __name__ == "__main__":
 
                 output_path = OUTPUT_PATH.joinpath(file_name).with_suffix(".pkl")
 
-                dictionary, _, mat, config = train(path, output_folder=OUTPUT_PATH)
+                dictionary, _, mat, config = train(path, output_folder=OUTPUT_PATH,
+                                                  algorithm_params=algorithm_params)
 
                 save_results(output_path, dictionary)
                 print(f"Saved results to {output_path}")

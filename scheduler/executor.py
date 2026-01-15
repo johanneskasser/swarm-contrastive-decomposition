@@ -9,12 +9,13 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, Tuple, Optional, List, Any
 import json
 
 # Import status tracker
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.status_tracker import StatusTracker
+from .job_manager import DEFAULT_ALGORITHM_PARAMS
 
 
 class JobExecutor:
@@ -72,6 +73,9 @@ class JobExecutor:
         job_manager.update_job_files(job_id, [str(f) for f in files])
         job_manager.update_job_status(job_id, 'running', status_file=str(status_tracker.get_status_file_path()))
 
+        # Get algorithm parameters (use defaults if not set)
+        algorithm_params = job.get('algorithm_params', DEFAULT_ALGORITHM_PARAMS.copy())
+
         # Open log file
         with open(log_file_path, 'w', encoding='utf-8') as log_file:
             # Write log header
@@ -102,7 +106,7 @@ class JobExecutor:
 
                     # Process the file
                     file_start = datetime.now()
-                    result = process_single_file(file_path, output_path)
+                    result = process_single_file(file_path, output_path, algorithm_params=algorithm_params)
                     file_end = datetime.now()
                     file_duration = (file_end - file_start).total_seconds()
 
@@ -232,6 +236,14 @@ class JobExecutor:
 
         status_file_path = str(status_tracker.get_status_file_path())
 
+        # Get algorithm parameters (use defaults if not set)
+        algorithm_params = job.get('algorithm_params', DEFAULT_ALGORITHM_PARAMS.copy())
+
+        # Save algorithm parameters to JSON file
+        params_file_path = output_dir / f"algorithm_params_{timestamp}.json"
+        with open(params_file_path, 'w', encoding='utf-8') as f:
+            json.dump(algorithm_params, f, indent=2)
+
         # Write initial log header
         with open(log_file_path, 'w', encoding='utf-8') as log_file:
             self._write_log_header(log_file, job, start_time)
@@ -240,8 +252,9 @@ class JobExecutor:
         python_exe = 'python3' if sys.platform != 'win32' else sys.executable
 
         # Prepare command (with -u for unbuffered output for real-time logging)
-        # Pass status file path to main.py
-        cmd = [python_exe, '-u', 'main.py', '-i', input_path, '-o', output_path, '--status-file', status_file_path]
+        # Pass status file path and params file to main.py
+        cmd = [python_exe, '-u', 'main.py', '-i', input_path, '-o', output_path,
+               '--status-file', status_file_path, '--params-file', str(params_file_path)]
 
         # Start process in background (detached)
         # Platform-specific detachment
@@ -379,12 +392,32 @@ class JobExecutor:
             job: Job dictionary
             start_time: Job start timestamp
         """
+        # Get algorithm parameters
+        params = job.get('algorithm_params', DEFAULT_ALGORITHM_PARAMS.copy())
+
         header = f"""{'='*80}
 JOB: {job['name']} ({job['id']})
 Started: {start_time.strftime('%Y-%m-%d %H:%M:%S')}
 Input Path:  {job['input_path']}
 Output Path: {job['output_path']}
 Command: python3 -u main.py -i {job['input_path']} -o {job['output_path']}
+{'='*80}
+
+ALGORITHM PARAMETERS:
+{'-'*80}
+  acceptance_silhouette:    {params.get('acceptance_silhouette', 0.88)}
+  max_iterations:           {params.get('max_iterations', 250)}
+  sampling_frequency:       {params.get('sampling_frequency', 2000)}
+  remove_bad_fr:            {params.get('remove_bad_fr', True)}
+  low_pass_cutoff:          {params.get('low_pass_cutoff', 500)}
+  high_pass_cutoff:         {params.get('high_pass_cutoff', 10)}
+  extension_factor:         {params.get('extension_factor', 20)}
+  peel_off_window_size_ms:  {params.get('peel_off_window_size_ms', 50)}
+  notch_params:             {params.get('notch_params', [50, 1.0, True])}
+  time_differentiate:       {params.get('time_differentiate', False)}
+  use_coeff_var_fitness:    {params.get('use_coeff_var_fitness', True)}
+  clamp_percentile:         {params.get('clamp_percentile', 0.999)}
+  output_final_source_plot: {params.get('output_final_source_plot', False)}
 {'='*80}
 
 """
