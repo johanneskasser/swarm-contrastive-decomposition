@@ -463,8 +463,10 @@ class SchedulerUI:
         python_exe = sys.executable
         cmd = [python_exe, '-u', str(orchestrator_path)] + job_ids
 
-        # Create log file for orchestrator output
-        orchestrator_log = Path.cwd() / f"orchestrator_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        # Create log file for orchestrator output in logs folder
+        logs_dir = Path.cwd() / 'logs'
+        logs_dir.mkdir(exist_ok=True)
+        orchestrator_log = logs_dir / f"orchestrator_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
         try:
             # Start orchestrator as detached background process
