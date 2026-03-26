@@ -27,6 +27,12 @@ __pycache__/
 # Ignore venv folder
 venv/
 
+utility_scripts/
+*_save.json
+
+# generated config file from hdsemg-pipe when installed within this repo as pypi lib
+config/config.json
+
 .idea/
 .vscode/
 *.iml
@@ -38,3 +44,5 @@ CLAUDE.md
 # Ignore scheduler job configuration (may contain personal paths)
 jobs_config.json
 jobs_config.json.bak
+
+*.log.*

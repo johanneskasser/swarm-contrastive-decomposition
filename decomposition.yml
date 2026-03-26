@@ -18,7 +18,7 @@ dependencies:
   - pip
   - pip:
       - easydict==1.13
-      - h5py==3.10.0
+      - h5py>=2.10,<=3.15.1
       - hdmf==3.11.0
       - mat73==0.62
       - pynwb==2.5.0

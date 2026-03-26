@@ -1,5 +1,11 @@
-matplotlib==3.8.3
-numpy==1.23.4
-scipy==1.10.1
-torch==2.1.1
+easydict==1.13
+h5py>=2.10,<=3.15.1
+hdmf==3.11.0
+mat73==0.62
+pynwb==2.5.0
+ruamel-yaml==0.18.5
+ruamel-yaml-clib==0.2.8
+torchaudio==2.1.1
+torchvision==0.16.1
+openhdemg==0.1.2
 hdsemg-pipe>=0.2.0
