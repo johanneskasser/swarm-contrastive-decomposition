@@ -1,3 +1,10 @@
+# Build
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.pyc
+
 # Ignore common files
 .DS_Store
 Thumbs.db
@@ -11,9 +18,8 @@ Thumbs.db
 __pycache__/
 **/__pycache__/
 *.pyc
-*.pkl
 *.npy
-*.mat
+*.pkl
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints
