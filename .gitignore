@@ -46,3 +46,6 @@ jobs_config.json
 jobs_config.json.bak
 
 *.log.*
+
+.claude/
+docs/superpowers/*
