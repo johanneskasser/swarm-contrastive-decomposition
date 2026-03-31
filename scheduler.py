@@ -17,7 +17,7 @@ Features:
     - Comprehensive logging with timestamps
     - Automatic error isolation (failed files don't block others)
 
-Author: Claude Code
+Author: Johannes Kasser with the assistance of Claude Code
 Version: 2.0.0
 """
 

@@ -26,7 +26,12 @@ DEFAULT_ALGORITHM_PARAMS = {
     "time_differentiate": False,
     "use_coeff_var_fitness": True,
     "clamp_percentile": 0.999,
-    "output_final_source_plot": False
+    "output_final_source_plot": False,
+    # New parameters from scd/configs.json
+    "square_sources_spike_det": False,
+    "peel_off": True,
+    "swarm": True,
+    "electrode": "",
 }
 
 # Parameter metadata for UI display and validation
@@ -98,7 +103,23 @@ ALGORITHM_PARAMS_METADATA = {
     "output_final_source_plot": {
         "type": "bool",
         "description": "Generate plots of accepted motor unit sources"
-    }
+    },
+    "square_sources_spike_det": {
+        "type": "bool",
+        "description": "Square sources before spike detection for better peak separation"
+    },
+    "peel_off": {
+        "type": "bool",
+        "description": "Remove identified source contributions from signal after each extraction (iterative deflation)"
+    },
+    "swarm": {
+        "type": "bool",
+        "description": "Use particle swarm optimisation update step (core SCD algorithm feature)"
+    },
+    "electrode": {
+        "type": "string",
+        "description": "Electrode type descriptor for labelling (e.g. 'surface grid', 'intramuscular')"
+    },
 }
 
 

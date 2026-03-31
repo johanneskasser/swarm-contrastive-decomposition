@@ -6,7 +6,7 @@ This script runs independently from the scheduler and manages
 sequential job execution in the background. It monitors jobs
 and starts them one at a time, even if the scheduler is closed.
 
-Author: Claude Code
+Author: Johannes Kasser with the assistance of Claude Code
 """
 
 import sys

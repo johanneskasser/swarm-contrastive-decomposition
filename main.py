@@ -6,11 +6,11 @@ import scipy.io as sio
 import argparse
 from typing import List, Dict, Optional, Tuple
 
-from config.structures import set_random_seed, Config
-from models.scd import SwarmContrastiveDecomposition
-from processing.postprocess import save_results
-from utils.exporting import export_to_openhdemg_json, export_to_muedit_mat
-from utils.preprocessing import loadEMG_updConfig, extract_raw_emg_metadata, load_channel_selection_json, get_grids_from_json
+from scd.config.structures import set_random_seed, Config
+from scd.models.scd import SwarmContrastiveDecomposition
+from scd.processing.postprocess import save_results
+from scd.utils.exporting import export_to_openhdemg_json, export_to_muedit_mat
+from scd.utils.preprocessing import loadEMG_updConfig, extract_raw_emg_metadata, load_channel_selection_json, get_grids_from_json
 
 set_random_seed(seed=42)
 
@@ -377,21 +377,28 @@ if __name__ == "__main__":
         file_paths = [f for f in INPUT_PATH.iterdir() if f.is_file() and f.suffix == '.mat']
         status_tracker.initialize(file_paths)
 
-    # Load algorithm parameters from JSON file if provided
+    # Load algorithm parameters from JSON file if provided, or auto-detect newest in output folder
     algorithm_params = None
+    import json
     if args.params_file:
-        import json
         params_path = Path(args.params_file)
-        if params_path.exists():
-            with open(params_path, 'r', encoding='utf-8') as f:
-                algorithm_params = json.load(f)
-            print(f"Loaded algorithm parameters from: {params_path}")
-            # Print key parameters
-            print(f"  acceptance_silhouette: {algorithm_params.get('acceptance_silhouette', 'default')}")
-            print(f"  max_iterations: {algorithm_params.get('max_iterations', 'default')}")
-            print(f"  sampling_frequency: {algorithm_params.get('sampling_frequency', 'default')}")
-        else:
-            print(f"Warning: Parameters file not found: {params_path}")
+    else:
+        # Find newest algorithm_params*.json in output folder
+        candidates = sorted(OUTPUT_PATH.glob("algorithm_params*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        params_path = candidates[0] if candidates else None
+        if params_path:
+            print(f"Auto-detected algorithm parameters file: {params_path.name}")
+
+    if params_path and params_path.exists():
+        with open(params_path, 'r', encoding='utf-8') as f:
+            algorithm_params = json.load(f)
+        print(f"Loaded algorithm parameters from: {params_path}")
+        # Print key parameters
+        print(f"  acceptance_silhouette: {algorithm_params.get('acceptance_silhouette', 'default')}")
+        print(f"  max_iterations: {algorithm_params.get('max_iterations', 'default')}")
+        print(f"  sampling_frequency: {algorithm_params.get('sampling_frequency', 'default')}")
+    elif args.params_file:
+        print(f"Warning: Parameters file not found: {params_path}")
 
     # Get list of .mat files in input directory
     file_paths = [f for f in INPUT_PATH.iterdir() if f.is_file() and f.suffix == '.mat']
