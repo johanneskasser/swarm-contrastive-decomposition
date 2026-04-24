@@ -1,11 +1,87 @@
 """Functions to preprocess the signal ready for blind source separation"""
 
+import math
+from typing import Optional, Sequence, Tuple
+
 import torch
 from scipy.signal import butter, filtfilt
 
 from scd.config.structures import set_random_seed
 
 set_random_seed(seed=42)
+
+
+def compute_extension_factor_bounds(
+    num_channels: int,
+    bad_channels: Optional[Sequence[int]] = None,
+    sampling_frequency: float = 10240.0,
+    muap_duration_ms: float = 15.0,
+    n_sources: int = 30,
+    max_firing_rate_hz: float = 40.0,
+) -> Tuple[int, int]:
+    """
+    Compute the valid range [k_min, k_max] for the extension factor K.
+
+    Two constraints are derived:
+
+    Constraint 1 — Model identifiability (from K*M >= N*(K + L - 1)):
+        Rearranges to K >= ceil(N*(L-1) / (M-N)), valid when M > N.
+        Below k_min the extended observation matrix is under-determined
+        and source separation may not be uniquely solvable in theory.
+
+    Constraint 2 — Temporal separation (from L + K - 1 < T):
+        Rearranges to K <= T - L = k_max.
+        Above k_max the observation window of one spike overlaps with
+        the next spike epoch at the maximum expected firing rate, causing
+        temporal aliasing in the extended signal.
+
+    Variables
+    ---------
+    K  – extension factor (to constrain)
+    M  – effective channels = num_channels - len(bad_channels)
+    L  – MUAP length in samples  = floor(muap_duration_ms * fs / 1000)
+    N  – assumed number of sources (n_sources, default 30)
+    T  – minimum inter-spike interval = floor(fs / max_firing_rate_hz)
+
+    Parameters
+    ----------
+    num_channels : int
+        Total channels in the raw EMG data.
+    bad_channels : sequence of int, optional
+        Rejected channel indices (zeroed before decomposition).
+    sampling_frequency : float
+        Sampling rate in Hz.
+    muap_duration_ms : float
+        Assumed MUAP duration in ms (default 15 ms).
+    n_sources : int
+        Assumed maximum number of sources N (default 30).
+    max_firing_rate_hz : float
+        Fastest expected motoneuron firing rate in Hz (default 40 Hz).
+
+    Returns
+    -------
+    k_min : int
+        Minimum K for model identifiability (Constraint 1).
+        Returns 1 when M <= N (constraint has no finite solution).
+    k_max : int
+        Maximum K from temporal separation (Constraint 2).
+    """
+    M = num_channels - (len(bad_channels) if bad_channels else 0)
+    L = int(muap_duration_ms * sampling_frequency / 1000)
+    T = int(sampling_frequency / max_firing_rate_hz)
+    N = n_sources
+
+    # Constraint 1: K*(M-N) >= N*(L-1)  [requires M > N and L > 1]
+    if M > N and L > 1:
+        k_min = math.ceil(N * (L - 1) / (M - N))
+    else:
+        k_min = 1  # constraint has no finite solution when M <= N
+
+    # Constraint 2: K <= T - L
+    k_max = T - L
+
+    return k_min, k_max
+
 
 def notch_filter(emg: torch.Tensor, f_samp: float, notch_params: tuple, cutoff_lowpass: int):
     """Filter emg channel by channel"""

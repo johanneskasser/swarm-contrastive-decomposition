@@ -47,11 +47,12 @@ class Config:
     iteration_patience: int = 20
     acceptance_silhouette: float = 0.85
     acceptance_max_roa: float = 30
+    max_firing_rate_hz: float = 50.0
     peel_off: bool = True
     peel_off_window_size_ms: int = 20
     peel_off_repeats: bool = True
     remove_bad_fr: bool = True
-    clamp_percentile: Optional[float] = 0.999
+    clamp_sources: bool = True
 
     # ICA parameters
     max_ica_steps: int = 1000
@@ -76,7 +77,7 @@ class Config:
 
     # Timestamping parameters
     square_sources_spike_det: bool = True
-    reset_peak_separation: int = 40
+    reset_peak_separation_ms: float = 4.0   # ms — converted to samples via property
     final_peak_separation: int = 40
     source_centroid_weighting: float = 0.0
     use_pairwise_silhouette: bool = False
@@ -95,6 +96,10 @@ class Config:
     @property
     def peel_off_window_size(self) -> int:
         return int(self.peel_off_window_size_ms * self.sampling_frequency / 1000)
+
+    @property
+    def reset_peak_separation(self) -> int:
+        return int(self.reset_peak_separation_ms * self.sampling_frequency / 1000)
 
     @property
     def roa_tolerance(self) -> int:

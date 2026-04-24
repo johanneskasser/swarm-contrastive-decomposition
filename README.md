@@ -151,11 +151,13 @@ Configurations are defined in `scd/configs.json`. Available presets:
 | `start_time` | Start time for signal trimming (s). Use `0` for beginning | `0` |
 | `end_time` | End time for signal trimming (s). Use `-1` for entire signal | `-1` |
 | `max_iterations` | Maximum decomposition iterations | `200` |
-| `peel_off_window_size_ms` | Window size for spike-triggered average (ms) | `20` |
+| `max_firing_rate_hz` | Expected maximum motoneuron firing rate (Hz). Used to derive the temporal-separation bound on `extension_factor` and to validate `reset_peak_separation_ms` | `50.0` |
+| `peel_off_window_size_ms` | Window size for spike-triggered average (ms). `peel_off_window_size` in samples is derived automatically as `ms × fs / 1000` | `20` |
+| `reset_peak_separation_ms` | Minimum distance between two detected peaks in the source signal (ms), converted to samples as `ms × fs / 1000`. Must be less than the minimum ISI at `max_firing_rate_hz` | `4.0` |
 | `output_final_source_plot` | Generate plot of final sources | `false` |
 | `use_coeff_var_fitness` | Use coefficient of variation fitness. `true` for EMG, `false` for intracortical | `true` |
 | `remove_bad_fr` | Filter sources with firing rates < 2 Hz or > 100 Hz | `true` |
-| `clamp_percentile` | Percentile for amplitude clamping | `0.999` |
+| `clamp_sources` | Clamp source amplitudes to ±30 σ during ICA to suppress outliers | `true` |
 
 ### Custom Configuration
 
@@ -177,6 +179,79 @@ Then use it:
 
 ```python
 dictionary, timestamps = scd.train("data.mat", config_name="my_experiment")
+```
+
+## Extension Factor Constraints
+
+The extension factor `K` is validated automatically against two mathematical constraints before each run.
+
+### Variables
+
+| Symbol | Meaning |
+|--------|---------|
+| `K` | Extension factor (`extension_factor` config parameter) |
+| `M` | Number of **clean** channels = total channels − `bad_channels` |
+| `L` | MUAP length in samples = `floor(15 ms × fs / 1000)` |
+| `N` | Assumed number of sources = **30** (fixed assumption) |
+| `T` | Minimum inter-spike interval = `floor(fs / max_firing_rate_hz)` samples |
+
+### Constraint 1 — Model Identifiability
+
+Starting from the over-determination condition for the extended mixing matrix:
+
+```
+K · M  ≥  N · (K + L − 1)
+```
+
+Rearranging (requires M > N):
+
+```
+K · (M − N)  ≥  N · (L − 1)
+K  ≥  ceil( N · (L − 1) / (M − N) )   →   K_min
+```
+
+`K_min` is the **minimum** K needed for the extended system to be theoretically identifiable (more observations than unknowns in the mixing model).  In practice, the sparse-EMG assumption means the algorithm can converge below this bound; a `UserWarning` is issued rather than an error when `K < K_min`.
+
+### Constraint 2 — Temporal Separation
+
+The observation window for a single spike spans `L + K − 1` samples after extension. It must be shorter than the fastest expected inter-spike interval `T`:
+
+```
+L + K − 1  <  T
+K  ≤  T − L   →   K_max
+```
+
+**A `ValueError` is raised** if `K > K_max`, because temporal aliasing between adjacent spikes is guaranteed.
+
+### Valid range and automatic validation
+
+```
+K_min  ≤  K  ≤  K_max
+```
+
+At the default sampling frequency of 10 240 Hz with `max_firing_rate_hz = 50`:
+
+| Quantity | Value |
+|----------|-------|
+| L (15 ms @ 10 240 Hz) | 153 samples |
+| T (50 Hz `max_firing_rate_hz`) | 204 samples |
+| **K_max** | **51** |
+
+All built-in presets (`default` K=25, `intramuscular` K=20, `surface` K=5) satisfy K ≤ 51.
+
+> **Tip:** If your recordings include faster-firing units (e.g. 70 Hz), set `max_firing_rate_hz` accordingly — this tightens K_max and prevents temporal aliasing at that firing rate.
+
+### Programmatic access
+
+```python
+from scd import compute_extension_factor_bounds
+
+k_min, k_max = compute_extension_factor_bounds(
+    num_channels=64,
+    bad_channels=[56],          # 63 clean channels
+    sampling_frequency=10240,
+)
+print(f"Valid K range: [{k_min}, {k_max}]")
 ```
 
 ## Test Data 🧪
@@ -230,6 +305,17 @@ If you use this code in your research, please cite our paper:
   doi={10.1109/TBME.2024.3446806},
   keywords={Recording; Time series analysis; Sorting; Vectors; Measurement; Electrodes; Probes; Independent component analysis; particle swarm optimisation; blind source separation; intramuscular electromyography; intracortical recording}
 }
+
+@article{grison2025unlocking,
+  title={Unlocking the full potential of high-density surface EMG: novel non-invasive high-yield motor unit decomposition},
+  author={Grison, Agnese and Mendez Guerra, Irene and Clarke, Alexander Kenneth and Muceli, Silvia and Ib{\'a}{\~n}ez, Jaime and Farina, Dario},
+  journal={The Journal of Physiology},
+  volume={603},
+  number={8},
+  pages={2281--2300},
+  year={2025},
+  publisher={Wiley Online Library}
+}
 ```
 
 ## Contact
@@ -237,4 +323,4 @@ If you use this code in your research, please cite our paper:
 For questions or inquiries:
 
 **Agnese Grison**  
-📧 agnese.grison16@imperial.ac.uk
+📧 agnese.grison@outlook.it
