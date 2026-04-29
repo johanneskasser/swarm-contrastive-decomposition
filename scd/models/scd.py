@@ -99,11 +99,13 @@ class SwarmContrastiveDecomposition(torch.nn.Module):
         emg = extend(emg, self.config.extension_factor)
 
         # Finally decorrelate the extended emg
-        emg, self.w_mat = whiten(emg, self.config.whitening_method, return_matrix=True)
+        emg, self.w_mat = whiten(emg, self.config.whitening_method, return_matrix=True,
+                                 regularization_alpha=self.config.whitening_regularization_alpha)
 
         if self.config.autocorrelation_whiten:
             emg = autocorrelation_whiten(
-                emg, self.config.extension_factor, self.config.whitening_method
+                emg, self.config.extension_factor, self.config.whitening_method,
+                regularization_alpha=self.config.whitening_regularization_alpha,
             )
 
         # Return the emg shape if in verbose mode
