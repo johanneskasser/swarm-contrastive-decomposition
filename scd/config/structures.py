@@ -37,7 +37,7 @@ class Config:
     notch_params: Optional[Tuple[int, float, bool]] = None  # powerline frequency, bandwidth, harmonics
     low_pass_cutoff: Optional[int] = None
     high_pass_cutoff: Optional[int] = None
-    extension_factor: int = 100
+    extension_factor: Optional[int] = None
     whitening_method: str = "zca"
     autocorrelation_whiten: bool = False
     bad_channels: Optional[Sequence[int]] = None

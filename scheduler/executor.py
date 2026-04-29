@@ -411,7 +411,7 @@ ALGORITHM PARAMETERS:
   remove_bad_fr:            {params.get('remove_bad_fr', True)}
   low_pass_cutoff:          {params.get('low_pass_cutoff', 500)}
   high_pass_cutoff:         {params.get('high_pass_cutoff', 10)}
-  extension_factor:         {params.get('extension_factor', 20)}
+  extension_factor:         {params.get('extension_factor') or 'auto (1000/n_good_channels)'}
   peel_off_window_size_ms:  {params.get('peel_off_window_size_ms', 50)}
   notch_params:             {params.get('notch_params', [50, 1.0, True])}
   time_differentiate:       {params.get('time_differentiate', False)}

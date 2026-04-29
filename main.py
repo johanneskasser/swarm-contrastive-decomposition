@@ -193,7 +193,7 @@ def train(path, grid_info=None, grid_suffix="", output_folder=None, algorithm_pa
 
     # Default parameters
     acceptance_silhouette = 0.88
-    extension_factor = 20 # will be updated
+    extension_factor = None  # auto-calculated from n_channels if not set explicitly
     time_differentiate = False
     notch_params = [50, 1.0, True] # powerline frequency, bandwidth, filter harmonics
     low_pass_cutoff = 500

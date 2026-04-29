@@ -20,7 +20,7 @@ DEFAULT_ALGORITHM_PARAMS = {
     "remove_bad_fr": True,
     "low_pass_cutoff": 500,
     "high_pass_cutoff": 10,
-    "extension_factor": 20,
+    "extension_factor": None,  # None = auto: round(1000 / n_good_channels) per Negro 2016
     "peel_off_window_size_ms": 50,
     "notch_params": [50, 1.0, True],
     "time_differentiate": False,
@@ -71,10 +71,10 @@ ALGORITHM_PARAMS_METADATA = {
         "description": "High-pass filter cutoff frequency in Hz"
     },
     "extension_factor": {
-        "type": "int",
+        "type": "int_or_auto",
         "min": 1,
         "max": 100,
-        "description": "Temporal extension factor (typically 1000/num_channels)"
+        "description": "Temporal extension factor. 'auto' = round(1000/n_good_channels) per Negro 2016"
     },
     "peel_off_window_size_ms": {
         "type": "int",

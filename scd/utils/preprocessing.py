@@ -346,13 +346,16 @@ def loadEMG_updConfig(mat, config, channel_range, ref_path_target_idx, ref_path_
             config.start_time = np.where(ref_path_target > force_threshold)[0][0] / fsamp
         config.sampling_frequency = fsamp
         n_good_channels = len(good_channels)
-        config.extension_factor = int(np.round(1000 / n_good_channels))
+        if config.extension_factor is None:
+            config.extension_factor = int(np.round(1000 / n_good_channels))
+            print(f"EF: {config.extension_factor} (auto from {n_good_channels} channels)")
+        else:
+            print(f"EF: {config.extension_factor} (user-specified)")
         config.channel_range = channel_range
         config.ref_path_target_idx = ref_path_target_idx
         config.ref_path_measured_idx = ref_path_measured_idx
         config.bad_channels = bad_channels
         # ToDo Add all other decomposition settings to config to be saved in openhdemg EXTRAS later on
-        print(f"EF: {round(config.extension_factor,2)}")
 
         # Load neural data
         mat["emg"] = mat["Data"][:, good_channels].transpose()  # needs update based on bad channels

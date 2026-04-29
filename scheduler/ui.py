@@ -1252,7 +1252,9 @@ class SchedulerUI:
                 desc = meta.get('description', '')
 
                 # Format value display
-                if isinstance(value, bool):
+                if value is None:
+                    value_str = "auto"
+                elif isinstance(value, bool):
                     value_str = "True" if value else "False"
                 elif isinstance(value, list):
                     value_str = str(value)
@@ -1307,14 +1309,17 @@ class SchedulerUI:
         current_value = params.get(param_key, DEFAULT_ALGORITHM_PARAMS[param_key])
         default_value = DEFAULT_ALGORITHM_PARAMS[param_key]
 
+        current_display = "auto" if current_value is None else current_value
+        default_display = "auto" if default_value is None else default_value
+
         print(f"\n--- Editing: {param_key} ---")
         print(f"Description: {meta.get('description', 'No description')}")
-        print(f"Current value: {current_value}")
-        print(f"Default value: {default_value}")
+        print(f"Current value: {current_display}")
+        print(f"Default value: {default_display}")
 
         if param_type == 'bool':
             print("\nEnter 'true' or 'false' (or 't'/'f'):")
-            new_value_str = input(f"New value [{current_value}]: ").strip().lower()
+            new_value_str = input(f"New value [{current_display}]: ").strip().lower()
 
             if not new_value_str:
                 return  # Keep current value
@@ -1327,11 +1332,32 @@ class SchedulerUI:
                 print("Invalid boolean value.")
                 return
 
+        elif param_type == 'int_or_auto':
+            min_val = meta.get('min', 1)
+            max_val = meta.get('max', 10000)
+            print(f"\nEnter integer value ({min_val} - {max_val}) or 'auto' (= round(1000/n_good_channels), Negro 2016):")
+            new_value_str = input(f"New value [{current_display}]: ").strip().lower()
+
+            if not new_value_str:
+                return  # Keep current value
+
+            if new_value_str in ('auto', 'a', 'none', ''):
+                new_value = None
+            else:
+                try:
+                    new_value = int(new_value_str)
+                    if new_value < min_val or new_value > max_val:
+                        print(f"Value must be between {min_val} and {max_val}.")
+                        return
+                except ValueError:
+                    print("Invalid value. Enter an integer or 'auto'.")
+                    return
+
         elif param_type == 'int':
             min_val = meta.get('min', 0)
             max_val = meta.get('max', 10000)
             print(f"\nEnter integer value ({min_val} - {max_val}):")
-            new_value_str = input(f"New value [{current_value}]: ").strip()
+            new_value_str = input(f"New value [{current_display}]: ").strip()
 
             if not new_value_str:
                 return  # Keep current value
@@ -1349,7 +1375,7 @@ class SchedulerUI:
             min_val = meta.get('min', 0.0)
             max_val = meta.get('max', 1.0)
             print(f"\nEnter decimal value ({min_val} - {max_val}):")
-            new_value_str = input(f"New value [{current_value}]: ").strip()
+            new_value_str = input(f"New value [{current_display}]: ").strip()
 
             if not new_value_str:
                 return  # Keep current value
@@ -1433,7 +1459,9 @@ class SchedulerUI:
                 meta = ALGORITHM_PARAMS_METADATA.get(key, {})
 
                 # Format value display
-                if isinstance(value, bool):
+                if value is None:
+                    value_str = "auto"
+                elif isinstance(value, bool):
                     value_str = "True" if value else "False"
                 elif isinstance(value, list):
                     value_str = str(value)
@@ -1489,14 +1517,17 @@ class SchedulerUI:
         current_value = params.get(param_key, DEFAULT_ALGORITHM_PARAMS[param_key])
         default_value = DEFAULT_ALGORITHM_PARAMS[param_key]
 
+        current_display = "auto" if current_value is None else current_value
+        default_display = "auto" if default_value is None else default_value
+
         print(f"\n--- Editing Global: {param_key} ---")
         print(f"Description: {meta.get('description', 'No description')}")
-        print(f"Current value: {current_value}")
-        print(f"Built-in default: {default_value}")
+        print(f"Current value: {current_display}")
+        print(f"Built-in default: {default_display}")
 
         if param_type == 'bool':
             print("\nEnter 'true' or 'false' (or 't'/'f'):")
-            new_value_str = input(f"New value [{current_value}]: ").strip().lower()
+            new_value_str = input(f"New value [{current_display}]: ").strip().lower()
 
             if not new_value_str:
                 return  # Keep current value
@@ -1509,11 +1540,32 @@ class SchedulerUI:
                 print("Invalid boolean value.")
                 return
 
+        elif param_type == 'int_or_auto':
+            min_val = meta.get('min', 1)
+            max_val = meta.get('max', 10000)
+            print(f"\nEnter integer value ({min_val} - {max_val}) or 'auto' (= round(1000/n_good_channels), Negro 2016):")
+            new_value_str = input(f"New value [{current_display}]: ").strip().lower()
+
+            if not new_value_str:
+                return  # Keep current value
+
+            if new_value_str in ('auto', 'a', 'none', ''):
+                new_value = None
+            else:
+                try:
+                    new_value = int(new_value_str)
+                    if new_value < min_val or new_value > max_val:
+                        print(f"Value must be between {min_val} and {max_val}.")
+                        return
+                except ValueError:
+                    print("Invalid value. Enter an integer or 'auto'.")
+                    return
+
         elif param_type == 'int':
             min_val = meta.get('min', 0)
             max_val = meta.get('max', 10000)
             print(f"\nEnter integer value ({min_val} - {max_val}):")
-            new_value_str = input(f"New value [{current_value}]: ").strip()
+            new_value_str = input(f"New value [{current_display}]: ").strip()
 
             if not new_value_str:
                 return  # Keep current value
@@ -1531,7 +1583,7 @@ class SchedulerUI:
             min_val = meta.get('min', 0.0)
             max_val = meta.get('max', 1.0)
             print(f"\nEnter decimal value ({min_val} - {max_val}):")
-            new_value_str = input(f"New value [{current_value}]: ").strip()
+            new_value_str = input(f"New value [{current_display}]: ").strip()
 
             if not new_value_str:
                 return  # Keep current value
@@ -1600,12 +1652,15 @@ class SchedulerUI:
             default = DEFAULT_ALGORITHM_PARAMS[key]
             param_type = meta.get('type', 'unknown')
             desc = meta.get('description', 'No description')
+            default_display = "auto" if default is None else default
 
             print(f"{key}")
             print(f"  Type: {param_type}")
-            print(f"  Default: {default}")
-            if 'min' in meta and 'max' in meta:
+            print(f"  Default: {default_display}")
+            if 'min' in meta and 'max' in meta and param_type != 'int_or_auto':
                 print(f"  Range: {meta['min']} - {meta['max']}")
+            elif param_type == 'int_or_auto' and 'min' in meta and 'max' in meta:
+                print(f"  Range: {meta['min']} - {meta['max']} or 'auto'")
             print(f"  {desc}")
             print()
 
