@@ -175,7 +175,8 @@ class JobManager:
             "version": "1.0",
             "jobs": [],
             "hooks": {
-                "on_all_jobs_completed": None
+                "on_all_jobs_completed": None,
+                "discord_webhook_url": None,
             },
             "global_algorithm_params": None  # None means use DEFAULT_ALGORITHM_PARAMS
         }
@@ -451,6 +452,19 @@ class JobManager:
             self.jobs_data["hooks"] = {}
 
         self.jobs_data["hooks"]["on_all_jobs_completed"] = command
+        self.save_jobs()
+
+    def get_discord_webhook(self) -> Optional[str]:
+        """Return the configured Discord webhook URL, or None if not set."""
+        if "hooks" not in self.jobs_data:
+            return None
+        return self.jobs_data["hooks"].get("discord_webhook_url")
+
+    def set_discord_webhook(self, url: Optional[str]):
+        """Set or clear the Discord webhook URL."""
+        if "hooks" not in self.jobs_data:
+            self.jobs_data["hooks"] = {}
+        self.jobs_data["hooks"]["discord_webhook_url"] = url
         self.save_jobs()
 
     def get_completion_hook(self) -> Optional[str]:

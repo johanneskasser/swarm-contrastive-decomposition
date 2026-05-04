@@ -9,6 +9,7 @@ and starts them one at a time, even if the scheduler is closed.
 Author: Johannes Kasser with the assistance of Claude Code
 """
 
+import subprocess
 import sys
 import time
 import json
@@ -202,6 +203,30 @@ def run_orchestrator(job_ids):
             log_message(f"ERROR executing completion hook: {str(e)}")
     else:
         log_message("No completion hook configured.")
+
+    # Send Discord notification if a webhook URL is configured
+    discord_url = job_manager.get_discord_webhook()
+    if discord_url:
+        log_message("Sending Discord notification...")
+        notifier = Path(__file__).parent.parent / 'utils' / 'discord_notifier.py'
+        try:
+            result = subprocess.run(
+                [sys.executable, str(notifier), '--job-ids'] + job_ids
+                + ['--webhook-url', discord_url],
+                timeout=30,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                log_message("Discord notification sent.")
+            else:
+                log_message(f"Discord notifier exited with code {result.returncode}: {result.stderr.strip()}")
+        except subprocess.TimeoutExpired:
+            log_message("Discord notification timed out (30 s).")
+        except Exception as e:
+            log_message(f"Discord notification error: {e}")
+    else:
+        log_message("No Discord webhook configured.")
 
 
 if __name__ == '__main__':

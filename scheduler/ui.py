@@ -1048,147 +1048,216 @@ class SchedulerUI:
         self._pause()
 
     def _configure_completion_hook(self):
-        """Configure the command to run after all jobs complete."""
-        print("\n" + "=" * 80)
-        print("CONFIGURE COMPLETION HOOK")
-        print("=" * 80)
-        print()
-        print("A completion hook is a shell command that runs automatically")
-        print("after ALL jobs finish (when using Sequential Background mode).")
-        print()
-        print("Example uses:")
-        print("  - Send Discord/Slack notification")
-        print("  - Trigger another script")
-        print("  - Send email notification")
-        print()
+        """Configure completion actions: generic shell hook and/or Discord webhook."""
+        import subprocess
 
-        # Show current hook
-        current_hook = self.job_manager.get_completion_hook()
-        if current_hook:
-            print(f"Current hook: {current_hook}")
-        else:
-            print("Current hook: (not set)")
-        print()
+        while True:
+            current_hook = self.job_manager.get_completion_hook()
+            current_discord = self.job_manager.get_discord_webhook()
 
-        print("Options:")
-        print("  1. Set new hook command")
-        print("  2. Test current hook")
-        print("  3. Disable hook")
-        print("  4. Cancel")
-        print()
+            hook_display = current_hook[:60] + "…" if current_hook and len(current_hook) > 60 else (current_hook or "(not set)")
+            discord_display = f"…{current_discord[-10:]}" if current_discord else "(not set)"
 
-        choice = input("Enter choice (1-4): ").strip()
-
-        if choice == '1':
-            # Set new hook
-            print("\n" + "-" * 80)
-            print("EXAMPLE DISCORD WEBHOOK:")
+            print("\n" + "=" * 80)
+            print("CONFIGURE COMPLETION ACTIONS")
+            print("=" * 80)
             print()
-            print('curl -H "Content-Type: application/json" -X POST -d \'{"content": "Jobs done!"}\' https://discord.com/api/webhooks/YOUR_URL')
+            print(f"  Generic hook:    {hook_display}")
+            print(f"  Discord webhook: {discord_display}")
             print()
-            print("TIPS:")
-            print("  - Use single quotes for JSON: -d '{\"content\": \"message\"}'")
-            print("  - For emojis, type them directly or use Unicode")
-            print("  - You can enter multi-line (backslashes optional)")
-            print("-" * 80)
+            print("  Generic hook (shell command run after all jobs finish):")
+            print("    1. Set hook command")
+            print("    2. Test hook")
+            print("    3. Disable hook")
+            print()
+            print("  Discord webhook (rich embed with MU count, silhouette, duration):")
+            print("    4. Set Discord webhook URL")
+            print("    5. Test Discord notification")
+            print("    6. Disable Discord webhook")
+            print()
+            print("    7. Done")
             print()
 
-            # Ask for input mode
-            print("Input mode:")
-            print("  1. Single line (recommended for curl)")
-            print("  2. Multi-line")
-            mode = input("\nChoose mode (1/2) [1]: ").strip() or "1"
+            choice = input("Enter choice (1-7): ").strip()
 
-            command = None
+            if choice == '1':
+                self._set_shell_hook()
+                current_hook = self.job_manager.get_completion_hook()
 
-            if mode == '1':
-                # Single line input
-                print("\nEnter your hook command:")
-                command = input("> ").strip()
-
-            elif mode == '2':
-                # Multi-line input
-                print("\nEnter your hook command (empty line when done):")
-                lines = []
-                while True:
-                    line = input()
-                    if not line:
-                        break
-                    lines.append(line)
-
-                if lines:
-                    # Process lines: remove trailing backslashes and whitespace
-                    processed_lines = []
-                    for line in lines:
-                        line = line.strip()
-                        if line.endswith('\\'):
-                            line = line[:-1].strip()
-                        processed_lines.append(line)
-                    command = ' '.join(processed_lines)
-
-            else:
-                print("\nInvalid mode. Cancelled.")
-                self._pause()
-                return
-
-            if command:
-                self.job_manager.set_completion_hook(command)
-                print(f"\n[OK] Hook configured successfully!")
-                print(f"\nCommand:\n{command}")
-            else:
-                print("\nCancelled.")
-
-        elif choice == '2':
-            # Test current hook
-            if not current_hook:
-                print("\nNo hook configured to test.")
-            else:
-                print(f"\nTesting hook: {current_hook}")
-                confirm = input("Execute this command now? (y/n): ").strip().lower()
-
-                if confirm == 'y':
-                    print("\nExecuting hook...")
-                    print("-" * 80)
-                    try:
-                        import subprocess
-                        result = subprocess.run(
-                            current_hook,
-                            shell=True,
-                            capture_output=True,
-                            text=True,
-                            timeout=30
-                        )
-                        print(f"Exit code: {result.returncode}")
-                        if result.stdout:
-                            print(f"Output:\n{result.stdout}")
-                        if result.stderr:
-                            print(f"Errors:\n{result.stderr}")
-                    except subprocess.TimeoutExpired:
-                        print("Hook timed out (30 seconds)")
-                    except Exception as e:
-                        print(f"Error executing hook: {str(e)}")
-                    print("-" * 80)
+            elif choice == '2':
+                current_hook = self.job_manager.get_completion_hook()
+                if not current_hook:
+                    print("\nNo hook configured to test.")
                 else:
-                    print("\nCancelled.")
+                    confirm = input(f"\nExecute now? (y/n): ").strip().lower()
+                    if confirm == 'y':
+                        print("\nExecuting hook...")
+                        print("-" * 80)
+                        try:
+                            result = subprocess.run(
+                                current_hook, shell=True,
+                                capture_output=True, text=True, timeout=30
+                            )
+                            print(f"Exit code: {result.returncode}")
+                            if result.stdout:
+                                print(f"Output:\n{result.stdout}")
+                            if result.stderr:
+                                print(f"Errors:\n{result.stderr}")
+                        except subprocess.TimeoutExpired:
+                            print("Hook timed out (30 s)")
+                        except Exception as e:
+                            print(f"Error: {e}")
+                        print("-" * 80)
+                    else:
+                        print("\nCancelled.")
 
-        elif choice == '3':
-            # Disable hook
-            if current_hook:
-                confirm = input("\nAre you sure you want to disable the hook? (y/n): ").strip().lower()
-                if confirm == 'y':
-                    self.job_manager.set_completion_hook(None)
-                    print("\nHook disabled.")
+            elif choice == '3':
+                current_hook = self.job_manager.get_completion_hook()
+                if current_hook:
+                    confirm = input("\nDisable the hook? (y/n): ").strip().lower()
+                    if confirm == 'y':
+                        self.job_manager.set_completion_hook(None)
+                        print("\nHook disabled.")
                 else:
-                    print("\nCancelled.")
-            else:
-                print("\nNo hook configured.")
+                    print("\nNo hook configured.")
 
-        elif choice == '4':
-            print("\nCancelled.")
-        else:
-            print("\nInvalid choice.")
+            elif choice == '4':
+                self._set_discord_webhook()
+
+            elif choice == '5':
+                self._test_discord_notification()
+
+            elif choice == '6':
+                current_discord = self.job_manager.get_discord_webhook()
+                if current_discord:
+                    confirm = input("\nDisable Discord webhook? (y/n): ").strip().lower()
+                    if confirm == 'y':
+                        self.job_manager.set_discord_webhook(None)
+                        print("\nDiscord webhook disabled.")
+                else:
+                    print("\nNo Discord webhook configured.")
+
+            elif choice == '7':
+                break
+            else:
+                print("\nInvalid choice.")
 
         self._pause()
+
+    def _set_shell_hook(self):
+        """Prompt the user to enter a shell hook command."""
+        print("\n" + "-" * 80)
+        print("SHELL HOOK — runs any command after all jobs complete.")
+        print()
+        print("Example:")
+        print('  curl -H "Content-Type: application/json" -X POST \\')
+        print('       -d \'{"content": "Jobs done!"}\' https://discord.com/api/webhooks/YOUR_URL')
+        print("-" * 80)
+        print()
+        print("Input mode:")
+        print("  1. Single line")
+        print("  2. Multi-line (empty line to finish)")
+        mode = input("\nMode [1]: ").strip() or "1"
+
+        command = None
+        if mode == '1':
+            command = input("Command: ").strip()
+        elif mode == '2':
+            lines = []
+            print("Enter command (empty line when done):")
+            while True:
+                line = input()
+                if not line:
+                    break
+                lines.append(line)
+            if lines:
+                processed = []
+                for line in lines:
+                    line = line.strip()
+                    if line.endswith('\\'):
+                        line = line[:-1].strip()
+                    processed.append(line)
+                command = ' '.join(processed)
+        else:
+            print("Invalid mode.")
+            return
+
+        if command:
+            self.job_manager.set_completion_hook(command)
+            print(f"\n[OK] Hook set.")
+        else:
+            print("\nCancelled.")
+
+    def _set_discord_webhook(self):
+        """Prompt the user to enter and validate a Discord webhook URL."""
+        print("\n" + "-" * 80)
+        print("DISCORD WEBHOOK")
+        print()
+        print("Paste your webhook URL from:")
+        print("  Discord channel settings -> Integrations -> Webhooks -> Copy Webhook URL")
+        print()
+        print("The URL looks like:")
+        print("  https://discord.com/api/webhooks/1234567890/AbCdEfGhIj...")
+        print("-" * 80)
+        print()
+
+        url = input("Webhook URL (or Enter to cancel): ").strip()
+        if not url:
+            print("\nCancelled.")
+            return
+
+        if not url.startswith("https://discord.com/api/webhooks/"):
+            print("\n[X] Invalid URL — must start with https://discord.com/api/webhooks/")
+            return
+
+        self.job_manager.set_discord_webhook(url)
+        masked = f"…{url[-10:]}"
+        print(f"\n[OK] Discord webhook set ({masked}).")
+
+    def _test_discord_notification(self):
+        """Send a test Discord notification using the most recently completed job."""
+        webhook_url = self.job_manager.get_discord_webhook()
+        if not webhook_url:
+            print("\nNo Discord webhook configured. Set one first (option 4).")
+            return
+
+        # Find a completed job to use as test data
+        all_jobs = self.job_manager.load_jobs()
+        completed = [j for j in all_jobs if j['status'] in ('completed', 'failed')]
+        if not completed:
+            print("\nNo completed jobs found to use as test data.")
+            print("Run a job first, then test the notification.")
+            return
+
+        # Use most recently completed
+        completed.sort(key=lambda j: j.get('completed_at') or '', reverse=True)
+        job = completed[0]
+
+        print(f"\nUsing job '{job['name']}' as test data.")
+        confirm = input("Send test notification now? (y/n): ").strip().lower()
+        if confirm != 'y':
+            print("\nCancelled.")
+            return
+
+        import sys
+        from pathlib import Path as _Path
+        notifier_path = _Path(__file__).parent.parent / 'utils' / 'discord_notifier.py'
+        notifier_dir = str(notifier_path.parent.parent)
+        if notifier_dir not in sys.path:
+            sys.path.insert(0, notifier_dir)
+
+        from utils.discord_notifier import collect_job_results, build_discord_payload, send_notification
+
+        print("\nCollecting metrics from output files...")
+        summary = collect_job_results(job)
+        payload = build_discord_payload(summary)
+
+        print("Sending notification...")
+        ok = send_notification(webhook_url, payload)
+        if ok:
+            print("\n[OK] Test notification sent! Check your Discord channel.")
+        else:
+            print("\n[X] Failed to send notification. Check the webhook URL and your internet connection.")
 
     def _configure_algorithm_params(self):
         """Configure algorithm parameters for a job."""
