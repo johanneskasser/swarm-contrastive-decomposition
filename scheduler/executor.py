@@ -416,7 +416,12 @@ ALGORITHM PARAMETERS:
   notch_params:             {params.get('notch_params', [50, 1.0, True])}
   time_differentiate:       {params.get('time_differentiate', False)}
   use_coeff_var_fitness:    {params.get('use_coeff_var_fitness', True)}
-  clamp_percentile:         {params.get('clamp_percentile', 0.999)}
+  max_firing_rate_hz:       {params.get('max_firing_rate_hz', 50.0)}
+  reset_peak_separation_ms: {params.get('reset_peak_separation_ms', 4.0)}
+  clamp_sources:            {params.get('clamp_sources', True)}
+  square_sources_spike_det: {params.get('square_sources_spike_det', True)}
+  peel_off:                 {params.get('peel_off', True)}
+  swarm:                    {params.get('swarm', True)}
   output_final_source_plot: {params.get('output_final_source_plot', False)}
 {'='*80}
 

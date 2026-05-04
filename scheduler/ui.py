@@ -19,7 +19,7 @@ except ImportError:
     READLINE_AVAILABLE = False
     print("Note: Install 'pyreadline3' for path auto-completion on Windows")
 
-from .job_manager import JobManager, DEFAULT_ALGORITHM_PARAMS, ALGORITHM_PARAMS_METADATA
+from .job_manager import JobManager, DEFAULT_ALGORITHM_PARAMS, ALGORITHM_PARAMS_METADATA, PRESET_DESCRIPTIONS
 from .executor import JobExecutor
 
 
@@ -74,7 +74,7 @@ class SchedulerUI:
             self._clear_screen()
             self._display_menu()
 
-            choice = input("\nEnter choice (1-15): ").strip()
+            choice = input("\nEnter choice (1-16): ").strip()
 
             if choice == '1':
                 self._view_all_jobs()
@@ -105,10 +105,12 @@ class SchedulerUI:
             elif choice == '14':
                 self._configure_global_params()
             elif choice == '15':
+                self._apply_preset_interactive()
+            elif choice == '16':
                 print("\nExiting scheduler. Goodbye!")
                 break
             else:
-                print("\nInvalid choice. Please enter a number between 1 and 15.")
+                print("\nInvalid choice. Please enter a number between 1 and 16.")
                 self._pause()
 
     def _clear_screen(self):
@@ -230,7 +232,8 @@ class SchedulerUI:
         print(" 12. Kill running job")
         print(" 13. Configure job algorithm parameters")
         print(" 14. Configure GLOBAL algorithm parameters")
-        print(" 15. Exit")
+        print(" 15. Apply config preset (default / surface / intramuscular)")
+        print(" 16. Exit")
         print()
 
     def _view_all_jobs(self):
@@ -1277,7 +1280,8 @@ class SchedulerUI:
             print("  * = modified from default")
             print()
             print("Options:")
-            print("  Enter parameter number (1-13) to modify")
+            print(f"  Enter parameter number (1-{len(param_keys)}) to modify")
+            print("  'p' = Load from preset (default / surface / intramuscular)")
             print("  'r' = Reset all to defaults")
             print("  'd' = Show parameter descriptions")
             print("  'q' = Done (save and return)")
@@ -1287,6 +1291,9 @@ class SchedulerUI:
 
             if choice == 'q':
                 break
+            elif choice == 'p':
+                self._load_preset_into_job(job)
+                job['algorithm_params'] = self.job_manager.get_job_params(job['id'])
             elif choice == 'r':
                 confirm = input("\nReset all parameters to defaults? (y/n): ").strip().lower()
                 if confirm == 'y':
@@ -1487,7 +1494,8 @@ class SchedulerUI:
             print("  * = modified from built-in default")
             print()
             print("Options:")
-            print("  Enter parameter number (1-13) to modify")
+            print(f"  Enter parameter number (1-{len(param_keys)}) to modify")
+            print("  'p' = Load from preset (default / surface / intramuscular)")
             print("  'r' = Reset all to built-in defaults")
             print("  'd' = Show parameter descriptions")
             print("  'q' = Done (save and return)")
@@ -1497,6 +1505,8 @@ class SchedulerUI:
 
             if choice == 'q':
                 break
+            elif choice == 'p':
+                self._load_preset_into_global()
             elif choice == 'r':
                 confirm = input("\nReset all global parameters to built-in defaults? (y/n): ").strip().lower()
                 if confirm == 'y':
@@ -1647,6 +1657,170 @@ class SchedulerUI:
             print(f"\n[OK] Global {param_key} updated to: {new_value}")
         except Exception as e:
             print(f"\n[X] Error updating parameter: {e}")
+
+    def _apply_preset_interactive(self):
+        """Top-level menu: browse presets and apply to global params or a specific job."""
+        print("\n" + "=" * 80)
+        print("APPLY CONFIG PRESET")
+        print("=" * 80)
+        print()
+        print("Presets are the named configurations bundled with the SCD package")
+        print("(scd/configs.json). Applying one overwrites the matching parameters")
+        print("while leaving OTBio-specific settings (notch filter, sampling rate) intact.")
+        print()
+
+        preset_name = self._show_preset_selection()
+        if preset_name is None:
+            return
+
+        print()
+        print("Apply preset to:")
+        print("  1. Global parameters  (all new jobs will inherit these)")
+        print("  2. A specific pending job")
+        print("  3. Cancel")
+        print()
+        dest = input("Choice: ").strip()
+
+        if dest == '1':
+            self._load_preset_into_global(preset_name=preset_name)
+        elif dest == '2':
+            pending = [j for j in self.job_manager.load_jobs() if j['status'] == 'pending']
+            if not pending:
+                print("\nNo pending jobs available.")
+                self._pause()
+                return
+            print()
+            for idx, job in enumerate(pending, 1):
+                print(f"  {idx}. {job['name']}")
+            print()
+            try:
+                jidx = int(input("Job number: ").strip()) - 1
+                if 0 <= jidx < len(pending):
+                    self._load_preset_into_job(pending[jidx], preset_name=preset_name)
+                else:
+                    print("\nInvalid job number.")
+            except ValueError:
+                print("\nInvalid input.")
+        else:
+            print("\nCancelled.")
+
+        self._pause()
+
+    def _show_preset_selection(self) -> Optional[str]:
+        """
+        Display available presets with key values and return the chosen name,
+        or None if the user cancels.
+        """
+        try:
+            presets = self.job_manager.list_presets()
+        except Exception as e:
+            print(f"\n[X] Could not load presets: {e}")
+            self._pause()
+            return None
+
+        from .job_manager import JobManager as _JM
+        print("Available presets:\n")
+        for idx, name in enumerate(presets, 1):
+            desc = PRESET_DESCRIPTIONS.get(name, "")
+            try:
+                params = _JM.load_preset_params(name)
+                K = params.get('extension_factor', '?')
+                K_str = str(K) if K is not None else 'auto'
+                sil = params.get('acceptance_silhouette', '?')
+                iters = params.get('max_iterations', '?')
+                detail = f"K={K_str}, sil={sil}, max_iter={iters}"
+            except Exception:
+                detail = ""
+            print(f"  {idx}. {name:<16} {desc}")
+            if detail:
+                print(f"     {detail}")
+            print()
+
+        choice = input("Select preset number (or 'c' to cancel): ").strip().lower()
+        if choice == 'c':
+            print("\nCancelled.")
+            return None
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(presets):
+                return presets[idx]
+            print("\nInvalid number.")
+            return None
+        except ValueError:
+            print("\nInvalid input.")
+            return None
+
+    def _load_preset_into_job(self, job: dict, preset_name: str = None):
+        """Load a preset into a specific job's algorithm params."""
+        if preset_name is None:
+            preset_name = self._show_preset_selection()
+            if preset_name is None:
+                return
+
+        try:
+            preset_params = self.job_manager.load_preset_params(preset_name)
+        except Exception as e:
+            print(f"\n[X] {e}")
+            return
+
+        current = job.get('algorithm_params', DEFAULT_ALGORITHM_PARAMS.copy())
+        changes = {k: v for k, v in preset_params.items() if current.get(k) != v}
+
+        if not changes:
+            print(f"\nPreset '{preset_name}' matches current values — nothing to change.")
+            return
+
+        print(f"\nApplying preset '{preset_name}' will change {len(changes)} parameter(s):\n")
+        for k, v in changes.items():
+            old = current.get(k, DEFAULT_ALGORITHM_PARAMS.get(k))
+            old_str = "auto" if old is None else str(old)
+            new_str = "auto" if v is None else str(v)
+            print(f"  {k:<28} {old_str}  ->  {new_str}")
+
+        print()
+        confirm = input("Apply? (y/n): ").strip().lower()
+        if confirm != 'y':
+            print("\nCancelled.")
+            return
+
+        self.job_manager.update_job_params(job['id'], changes)
+        print(f"\n[OK] Preset '{preset_name}' applied to job '{job['name']}'.")
+
+    def _load_preset_into_global(self, preset_name: str = None):
+        """Load a preset into global algorithm params."""
+        if preset_name is None:
+            preset_name = self._show_preset_selection()
+            if preset_name is None:
+                return
+
+        try:
+            preset_params = self.job_manager.load_preset_params(preset_name)
+        except Exception as e:
+            print(f"\n[X] {e}")
+            return
+
+        current = self.job_manager.get_global_params()
+        changes = {k: v for k, v in preset_params.items() if current.get(k) != v}
+
+        if not changes:
+            print(f"\nPreset '{preset_name}' matches current global values — nothing to change.")
+            return
+
+        print(f"\nApplying preset '{preset_name}' will change {len(changes)} global parameter(s):\n")
+        for k, v in changes.items():
+            old = current.get(k, DEFAULT_ALGORITHM_PARAMS.get(k))
+            old_str = "auto" if old is None else str(old)
+            new_str = "auto" if v is None else str(v)
+            print(f"  {k:<28} {old_str}  ->  {new_str}")
+
+        print()
+        confirm = input("Apply? (y/n): ").strip().lower()
+        if confirm != 'y':
+            print("\nCancelled.")
+            return
+
+        self.job_manager.set_global_params(changes)
+        print(f"\n[OK] Preset '{preset_name}' applied to global parameters.")
 
     def _show_param_descriptions(self):
         """Show detailed descriptions for all parameters."""

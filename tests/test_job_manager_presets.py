@@ -11,7 +11,7 @@ def test_new_params_present_in_defaults():
 
 
 def test_new_param_default_values():
-    assert DEFAULT_ALGORITHM_PARAMS["square_sources_spike_det"] is False
+    assert DEFAULT_ALGORITHM_PARAMS["square_sources_spike_det"] is True
     assert DEFAULT_ALGORITHM_PARAMS["peel_off"] is True
     assert DEFAULT_ALGORITHM_PARAMS["swarm"] is True
     assert DEFAULT_ALGORITHM_PARAMS["electrode"] == ""

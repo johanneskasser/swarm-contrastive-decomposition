@@ -25,13 +25,22 @@ DEFAULT_ALGORITHM_PARAMS = {
     "notch_params": [50, 1.0, True],
     "time_differentiate": False,
     "use_coeff_var_fitness": True,
-    "clamp_percentile": 0.999,
+    "max_firing_rate_hz": 50.0,       # controls K_max bound on extension_factor
+    "reset_peak_separation_ms": 4.0,  # min peak distance; must be < 1000/max_firing_rate_hz
+    "clamp_sources": True,            # clamp source amplitudes to ±30σ during ICA
     "output_final_source_plot": False,
-    # New parameters from scd/configs.json
-    "square_sources_spike_det": False,
+    # Parameters from scd/configs.json
+    "square_sources_spike_det": True,
     "peel_off": True,
     "swarm": True,
     "electrode": "",
+}
+
+# Human-readable descriptions for the built-in presets from scd/configs.json
+PRESET_DESCRIPTIONS = {
+    "default":        "General purpose — balanced settings for most EMG data (K=25)",
+    "intramuscular":  "Intramuscular / fine-wire recordings — more iterations (K=20)",
+    "surface":        "Surface HD-EMG — lower K, tighter filters, fewer iterations (K=5)",
 }
 
 # Parameter metadata for UI display and validation
@@ -92,13 +101,23 @@ ALGORITHM_PARAMS_METADATA = {
     },
     "use_coeff_var_fitness": {
         "type": "bool",
-        "description": "Use coefficient of variation fitness metric"
+        "description": "Use coefficient of variation fitness metric (True for EMG, False for intracortical)"
     },
-    "clamp_percentile": {
+    "max_firing_rate_hz": {
         "type": "float",
-        "min": 0.9,
-        "max": 1.0,
-        "description": "Percentile for outlier clamping (0.9-1.0)"
+        "min": 5.0,
+        "max": 200.0,
+        "description": "Expected maximum motoneuron firing rate (Hz). Tightens K_max bound — faster units require a smaller extension_factor."
+    },
+    "reset_peak_separation_ms": {
+        "type": "float",
+        "min": 0.5,
+        "max": 50.0,
+        "description": "Minimum distance between detected peaks in the source signal (ms). Must be less than 1000/max_firing_rate_hz."
+    },
+    "clamp_sources": {
+        "type": "bool",
+        "description": "Clamp source amplitudes to ±30σ during ICA to suppress outlier spikes."
     },
     "output_final_source_plot": {
         "type": "bool",
@@ -627,6 +646,37 @@ class JobManager:
         """
         self.jobs_data['global_algorithm_params'] = None
         self.save_jobs()
+
+    # --- Preset configurations ---
+
+    @staticmethod
+    def list_presets() -> List[str]:
+        """Return the names of presets available in scd/configs.json."""
+        configs_path = Path(__file__).parent.parent / "scd" / "configs.json"
+        with open(configs_path, "r", encoding="utf-8") as f:
+            return list(json.load(f).keys())
+
+    @staticmethod
+    def load_preset_params(preset_name: str) -> Dict[str, Any]:
+        """
+        Load a named preset from scd/configs.json and return only the params
+        that the scheduler manages (keys present in DEFAULT_ALGORITHM_PARAMS).
+        Null/None values in the preset are skipped so they don't clobber
+        OTBio-specific defaults (e.g. notch_params, sampling_frequency).
+        """
+        configs_path = Path(__file__).parent.parent / "scd" / "configs.json"
+        with open(configs_path, "r", encoding="utf-8") as f:
+            all_configs = json.load(f)
+        if preset_name not in all_configs:
+            raise ValueError(
+                f"Unknown preset '{preset_name}'. Available: {list(all_configs.keys())}"
+            )
+        preset = all_configs[preset_name]
+        return {
+            key: preset[key]
+            for key in DEFAULT_ALGORITHM_PARAMS
+            if key in preset and preset[key] is not None
+        }
 
     def has_custom_global_params(self) -> bool:
         """

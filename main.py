@@ -192,20 +192,26 @@ def train(path, grid_info=None, grid_suffix="", output_folder=None, algorithm_pa
 
     # Default parameters
     acceptance_silhouette = 0.88
-    extension_factor = None  # auto-calculated from n_channels if not set explicitly
+    extension_factor = None  # None → auto-calculated in scd.run() via Negro 2016
     time_differentiate = False
-    notch_params = [50, 1.0, True] # powerline frequency, bandwidth, filter harmonics
+    notch_params = [50, 1.0, True]
     low_pass_cutoff = 500
     high_pass_cutoff = 10
-    start_time = 0 # will be updated
-    end_time = -1 # will be updated
+    start_time = 0
+    end_time = -1
     max_iterations = 250
-    sampling_frequency = 2000 # will be updated
-    peel_off_window_size_ms = 50 # 20 # ms
+    sampling_frequency = 2000  # overridden by loadEMG_updConfig
+    peel_off_window_size_ms = 50
     output_final_source_plot = False
     use_coeff_var_fitness = True
     remove_bad_fr = True
-    clamp_percentile = 0.999
+    max_firing_rate_hz = 50.0
+    reset_peak_separation_ms = 4.0
+    clamp_sources = True
+    square_sources_spike_det = True
+    peel_off = True
+    swarm = True
+    electrode = None
 
     # Override with provided algorithm parameters
     if algorithm_params:
@@ -221,7 +227,13 @@ def train(path, grid_info=None, grid_suffix="", output_folder=None, algorithm_pa
         output_final_source_plot = algorithm_params.get('output_final_source_plot', output_final_source_plot)
         use_coeff_var_fitness = algorithm_params.get('use_coeff_var_fitness', use_coeff_var_fitness)
         remove_bad_fr = algorithm_params.get('remove_bad_fr', remove_bad_fr)
-        clamp_percentile = algorithm_params.get('clamp_percentile', clamp_percentile)
+        max_firing_rate_hz = algorithm_params.get('max_firing_rate_hz', max_firing_rate_hz)
+        reset_peak_separation_ms = algorithm_params.get('reset_peak_separation_ms', reset_peak_separation_ms)
+        clamp_sources = algorithm_params.get('clamp_sources', clamp_sources)
+        square_sources_spike_det = algorithm_params.get('square_sources_spike_det', square_sources_spike_det)
+        peel_off = algorithm_params.get('peel_off', peel_off)
+        swarm = algorithm_params.get('swarm', swarm)
+        electrode = algorithm_params.get('electrode', electrode) or None
 
     config = Config(
         device=device,
@@ -239,7 +251,13 @@ def train(path, grid_info=None, grid_suffix="", output_folder=None, algorithm_pa
         output_final_source_plot=output_final_source_plot,
         use_coeff_var_fitness=use_coeff_var_fitness,
         remove_bad_fr=remove_bad_fr,
-        clamp_percentile=clamp_percentile,
+        max_firing_rate_hz=max_firing_rate_hz,
+        reset_peak_separation_ms=reset_peak_separation_ms,
+        clamp_sources=clamp_sources,
+        square_sources_spike_det=square_sources_spike_det,
+        peel_off=peel_off,
+        swarm=swarm,
+        electrode=electrode,
     )
 
     # Load data

@@ -3,8 +3,13 @@
 from typing import Optional, List, Tuple, Dict
 import torch
 
+import logging
+import math
+import warnings
+
 from scd.config.structures import Config, Data
 from scd.processing.preprocess import (
+    compute_extension_factor_bounds,
     whiten,
     autocorrelation_whiten,
     extend,
@@ -13,6 +18,8 @@ from scd.processing.preprocess import (
     low_pass_filter,
     high_pass_filter,
 )
+
+logger = logging.getLogger(__name__)
 from scd.models.timestamping import (
     source_to_timestamps,
     spike_triggered_average,
@@ -430,6 +437,41 @@ class SwarmContrastiveDecomposition(torch.nn.Module):
             starting_exponents = [float(self.config.fixed_exponent)]
         else:
             starting_exponents = self.config.starting_exponents
+
+        # Auto-compute extension_factor when not set (Negro 2016: round(1000 / n_good_channels))
+        if self.config.extension_factor is None:
+            n_good = emg.shape[1] - (len(self.config.bad_channels) if self.config.bad_channels else 0)
+            self.config.extension_factor = round(1000 / n_good)
+            logger.info("extension_factor auto-set to %d (1000 / %d good channels, Negro 2016)",
+                        self.config.extension_factor, n_good)
+
+        # Validate extension_factor against theoretical bounds
+        if self.config.sampling_frequency is not None:
+            k_min, k_max = compute_extension_factor_bounds(
+                num_channels=emg.shape[1],
+                bad_channels=self.config.bad_channels,
+                sampling_frequency=self.config.sampling_frequency,
+                max_firing_rate_hz=self.config.max_firing_rate_hz,
+            )
+            K = self.config.extension_factor
+            if k_max <= 0:
+                raise ValueError(
+                    f"Temporal-separation constraint yields k_max={k_max} <= 0. "
+                    f"Check max_firing_rate_hz ({self.config.max_firing_rate_hz} Hz) "
+                    f"and sampling_frequency ({self.config.sampling_frequency} Hz)."
+                )
+            if K > k_max:
+                raise ValueError(
+                    f"extension_factor={K} exceeds temporal-separation limit k_max={k_max}. "
+                    f"Reduce extension_factor to at most {k_max}."
+                )
+            if K < k_min:
+                warnings.warn(
+                    f"extension_factor={K} is below the theoretical minimum k_min={k_min} "
+                    f"for model identifiability. The algorithm may still converge for sparse EMG.",
+                    UserWarning,
+                    stacklevel=2,
+                )
 
         self.data = Data(
             emg=self.preprocess_emg(emg),
