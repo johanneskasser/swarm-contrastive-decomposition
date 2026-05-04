@@ -1267,7 +1267,11 @@ class SchedulerUI:
                 default = DEFAULT_ALGORITHM_PARAMS[key]
                 marker = " *" if value != default else ""
 
-                print(f"  {idx:2d}. {key:<28s} = {value_str:<15s}{marker}")
+                # Hint for int_or_auto params
+                param_type = meta.get('type', '')
+                hint = "  [integer or 'auto']" if param_type == 'int_or_auto' else ""
+
+                print(f"  {idx:2d}. {key:<28s} = {value_str:<15s}{marker}{hint}")
 
             print()
             print("  * = modified from default")
@@ -1474,7 +1478,10 @@ class SchedulerUI:
                 default = DEFAULT_ALGORITHM_PARAMS[key]
                 marker = " *" if value != default else ""
 
-                print(f"  {idx:2d}. {key:<28s} = {value_str:<15s}{marker}")
+                param_type = meta.get('type', '')
+                hint = "  [integer or 'auto']" if param_type == 'int_or_auto' else ""
+
+                print(f"  {idx:2d}. {key:<28s} = {value_str:<15s}{marker}{hint}")
 
             print()
             print("  * = modified from built-in default")

@@ -10,7 +10,7 @@ from scd.config.structures import set_random_seed, Config
 from scd.models.scd import SwarmContrastiveDecomposition
 from scd.processing.postprocess import save_results
 from scd.utils.exporting import export_to_openhdemg_json, export_to_muedit_mat
-from scd.utils.preprocessing import loadEMG_updConfig, extract_raw_emg_metadata, load_channel_selection_json, get_grids_from_json
+from scd.utils.preprocessing import loadEMG_updConfig, extract_raw_emg_metadata, load_channel_selection_json, get_grids_from_json, extract_muscle_name_from_description
 
 set_random_seed(seed=42)
 
@@ -85,7 +85,6 @@ def process_single_file(file_path: Path, output_folder: Path,
                 # Try to extract muscle name from description for filename
                 muscle_name = None
                 try:
-                    from utils.preprocessing import extract_muscle_name_from_description
                     mat_data = sio.loadmat(file_path)
                     channel_range = [
                         min(ch['channel_index'] for ch in grid_info['channels']),
@@ -440,7 +439,6 @@ if __name__ == "__main__":
                         # Try to extract muscle name from description for filename
                         muscle_name = None
                         try:
-                            from utils.preprocessing import extract_muscle_name_from_description
                             mat_data = sio.loadmat(path)
                             channel_range = [
                                 min(ch['channel_index'] for ch in grid_info['channels']),
