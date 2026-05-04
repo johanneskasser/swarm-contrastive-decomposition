@@ -1,9 +1,13 @@
 """Functions to preprocess the signal ready for blind source separation"""
 
+import logging
+
 import torch
 from scipy.signal import butter, filtfilt
 
 from scd.config.structures import set_random_seed
+
+logger = logging.getLogger(__name__)
 
 set_random_seed(seed=42)
 
@@ -83,7 +87,8 @@ def extend(x: torch.Tensor, factor: int) -> torch.Tensor:
     return x[factor:]
 
 
-def whiten(x: torch.Tensor, method: str = "zca", return_matrix: bool = False) -> torch.Tensor:
+def whiten(x: torch.Tensor, method: str = "zca", return_matrix: bool = False,
+           regularization_alpha: float = 0.0) -> torch.Tensor:
     """
     Performs whitening on input of shape (samples, channels)
 
@@ -96,6 +101,8 @@ def whiten(x: torch.Tensor, method: str = "zca", return_matrix: bool = False) ->
     "zca_cor": ZCA method on correlation matrix
     "pca_cor": PCA method on correlation matrix
 
+    regularization_alpha: controls the Tikhonov regularization epsilon.
+        0.0 (default) → fixed epsilon=1e-10; >0 → epsilon = alpha * s_max (dynamic).
     """
 
     # Inconsistent behaviour on cuda - switch to cpu
@@ -115,12 +122,28 @@ def whiten(x: torch.Tensor, method: str = "zca", return_matrix: bool = False) ->
     else:
         raise Exception("Specified method not in list.")
 
+    s_max = s.max().item()
+    s_min = s.min().item()
+    if regularization_alpha > 0.0:
+        epsilon = regularization_alpha * s_max
+        mode = f"dynamic (alpha={regularization_alpha:.2e})"
+    else:
+        epsilon = 1e-10
+        mode = "fixed 1e-10 (default)"
+    effective_cond = s_max / (s_min + epsilon)
+    logger.info(
+        "Whitening | method=%s  shape=%s  mode=%s  s_max=%.4e  s_min=%.4e  "
+        "epsilon=%.4e  effective_cond~%.3e",
+        method, tuple(x.shape), mode,
+        s_max, s_min, epsilon, effective_cond,
+    )
+
     if method == "chol":
-        s_inv = (s + 1e-10).reciprocal().diag()
+        s_inv = (s + epsilon).reciprocal().diag()
         cov_inv = u.matmul(s_inv).matmul(u.t())
         w = torch.linalg.cholesky(cov_inv).t()
     else:
-        s_inv_sqrt = torch.sqrt(s + 1e-10).reciprocal().diag()
+        s_inv_sqrt = torch.sqrt(s + epsilon).reciprocal().diag()
 
     if method == "zca":
         w = u.matmul(s_inv_sqrt).matmul(u.t())
@@ -138,7 +161,8 @@ def whiten(x: torch.Tensor, method: str = "zca", return_matrix: bool = False) ->
     return whitened_x
 
 
-def autocorrelation_whiten(x: torch.Tensor, extension_factor: int, method: str = "zca"):
+def autocorrelation_whiten(x: torch.Tensor, extension_factor: int, method: str = "zca",
+                           regularization_alpha: float = 1e-3):
     """Performs segmented autocorrelation whitening on each channel
     Using the overlap add method to reconstruct the signal"""
 
@@ -149,7 +173,7 @@ def autocorrelation_whiten(x: torch.Tensor, extension_factor: int, method: str =
         ).t()
 
         channel = torch.nn.functional.fold(
-            whiten(windowed_channel, method).t(),
+            whiten(windowed_channel, method, regularization_alpha=regularization_alpha).t(),
             output_size=(1, channel.shape[0]),
             kernel_size=(1, extension_factor),
             stride=1,

@@ -39,6 +39,7 @@ class Config:
     high_pass_cutoff: Optional[int] = None
     extension_factor: Optional[int] = None
     whitening_method: str = "zca"
+    whitening_regularization_alpha: float = 0.0  # 0 = fixed 1e-10 (default/best); >0 = dynamic epsilon = alpha*s_max
     autocorrelation_whiten: bool = False
     bad_channels: Optional[Sequence[int]] = None
 
