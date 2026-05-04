@@ -50,7 +50,7 @@ class SwarmContrastiveDecomposition(torch.nn.Module):
             "autocorrelation_whiten": self.config.autocorrelation_whiten,
             "sampling_frequency":     self.config.sampling_frequency,
             "peel_off_window_size":   self.config.peel_off_window_size,
-            "clamp_percentile":       self.config.clamp_percentile,
+            "clamp_sources":          self.config.clamp_sources,
             "edge_mask_size":         self.config.edge_mask_size,
         }
 
@@ -120,8 +120,8 @@ class SwarmContrastiveDecomposition(torch.nn.Module):
         sources = torch.matmul(self.data.emg, self.data.ica_weights)
         sources = (sources - sources.mean(0)) / sources.std(0)
 
-        # Clamp sources to avoid outlying spikes
-        if self.config.clamp_percentile:
+        # Clamp sources to avoid outlying spikes
+        if self.config.clamp_sources:
 
             if torch.all(self.data.personal_best['spike_heights'] == 0):
                 sources = sources.clamp(max=30)
@@ -136,7 +136,7 @@ class SwarmContrastiveDecomposition(torch.nn.Module):
                         sources[sources[:,s] > thr, s] = mu + torch.randn_like(sources[sources[:,s] > thr, s]) * std
                     else:
                         sources[sources[:,s] > 30, s] = 30
-            
+
         else:
             sources = sources.clamp(max=30)
 
@@ -251,6 +251,8 @@ class SwarmContrastiveDecomposition(torch.nn.Module):
                     source_to_timestamps(
                         s,
                         min_peak_separation,
+                        use_pairwise_silhouette=self.config.use_pairwise_silhouette,
+                        use_mean=self.config.use_mean_when_clustering,
                     )
                     if s.isfinite().all()
                     else [torch.tensor(0).type_as(s)] * 3
