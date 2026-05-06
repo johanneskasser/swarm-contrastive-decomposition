@@ -16,6 +16,7 @@ import argparse
 import json
 import logging
 import pickle  # noqa: S403 — loading own trusted output files only
+import re
 import sys
 import urllib.request
 from datetime import datetime, timezone
@@ -54,12 +55,43 @@ def _read_pkl_metrics(pkl_path: str) -> dict:
         return {}
 
 
+def _parse_status_file(status_file_path: str) -> dict:
+    """Parse counts from a text status file written by StatusTracker.
+
+    Returns a dict with 'total', 'done', 'failed' keys, or empty dict on failure.
+    """
+    try:
+        text = Path(status_file_path).read_text(encoding='utf-8')
+        total = int(re.search(r'Total files:\s+(\d+)', text).group(1))
+        done = int(re.search(r'Done:\s+(\d+)', text).group(1))
+        failed = int(re.search(r'Failed:\s+(\d+)', text).group(1))
+        return {'total': total, 'done': done, 'failed': failed}
+    except Exception as e:
+        logger.warning("Could not parse status file %s: %s", status_file_path, e)
+        return {}
+
+
+def _collect_metrics_from_folder(output_path: str) -> tuple:
+    """Scan output folder for .pkl files and aggregate MU metrics."""
+    total_mus = 0
+    all_sils: list = []
+    output_dir = Path(output_path)
+    if not output_dir.exists():
+        return total_mus, all_sils
+    for pkl_path in sorted(output_dir.glob('*.pkl')):
+        metrics = _read_pkl_metrics(str(pkl_path))
+        total_mus += metrics.get('n_mus', 0)
+        all_sils.extend(metrics.get('sils', []))
+    return total_mus, all_sils
+
+
 def collect_job_results(job: dict) -> dict:
     """
     Aggregate metrics from a completed job's output .pkl files.
 
-    Iterates files_processed -> grids_processed, loads each .pkl,
-    and accumulates total MU count and silhouette values across all grids.
+    For foreground jobs: reads files_processed from the job dict.
+    For background jobs (total_files == 0): falls back to parsing the status
+    file for counts and scanning the output folder for MU metrics.
     Missing or unreadable pkl files are silently skipped.
     """
     total_mus = 0
@@ -86,8 +118,25 @@ def collect_job_results(job: dict) -> dict:
     successful = job.get('successful_files', 0)
     total = job.get('total_files', 0)
     failed_count = job.get('failed_files', 0)
+    job_status = job.get('status', '')
 
-    if total == 0 or (failed_count > 0 and successful == 0):
+    if total == 0:
+        # Background job — no per-file data in jobs_config.json.
+        # Fall back to the status file for counts and scan the output folder for MU data.
+        status_file = job.get('status_file', '')
+        if status_file:
+            counts = _parse_status_file(status_file)
+            total = counts.get('total', 0)
+            successful = counts.get('done', 0)
+            failed_count = counts.get('failed', 0)
+
+        output_path = job.get('output_path', '')
+        if output_path and not total_mus:
+            total_mus, all_sils = _collect_metrics_from_folder(output_path)
+
+    if total == 0:
+        status = "success" if job_status == "completed" else "failed"
+    elif failed_count > 0 and successful == 0:
         status = "failed"
     elif failed_count == 0:
         status = "success"
