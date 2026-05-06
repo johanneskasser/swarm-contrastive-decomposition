@@ -1,6 +1,8 @@
+import json
 import os
 import numpy as np
 import torch
+from datetime import datetime
 from pathlib import Path
 import scipy.io as sio
 import argparse
@@ -13,6 +15,15 @@ from scd.utils.exporting import export_to_openhdemg_json, export_to_muedit_mat
 from scd.utils.preprocessing import loadEMG_updConfig, extract_raw_emg_metadata, load_channel_selection_json, get_grids_from_json, extract_muscle_name_from_description
 
 set_random_seed(seed=42)
+
+
+def _save_grid_outputs(dictionary, config, file_path: Path, output_path: Path,
+                       rawEMG_Channels, refSignal, fsamp, ied, extras):
+    """Save .pkl, .json, and _muedit.mat outputs for a single grid result."""
+    save_results(output_path, dictionary)
+    export_to_openhdemg_json(config, output_path, rawEMG_Channels, refSignal,
+                             ied, fsamp, str(file_path), extras)
+    export_to_muedit_mat(str(output_path).replace('.pkl', '.json'))
 
 
 def find_processable_files(input_path: Path) -> List[Path]:
@@ -43,20 +54,27 @@ def process_single_file(file_path: Path, output_folder: Path,
     """
     Process a single .mat file through the SCD algorithm.
 
-    Args:
-        file_path: Path to the .mat file to process
-        output_folder: Output directory for results
-        algorithm_params: Optional dict of algorithm parameters
+    When repair_enabled is True in algorithm_params and a grid yields fewer MUs
+    than repair_mu_threshold, the decomposition is retried with progressively
+    higher extension_factor values. Intermediate (sub-optimal) attempts are
+    stored under output_folder/repair_artefacts/<file_stem>/ and a
+    repair_report.json summary is written there.
 
     Returns:
-        Dictionary with processing results:
         {
             'success': bool,
             'file_path': str,
-            'grids_processed': List[Dict],  # Info about each grid processed
+            'grids_processed': List[Dict],
             'error': str (if failed)
         }
     """
+    params = algorithm_params or {}
+    repair_enabled = params.get('repair_enabled', False)
+    repair_mu_threshold = params.get('repair_mu_threshold', 2)
+    repair_max_retries = params.get('repair_max_retries', 3)
+    repair_extension_increment = params.get('repair_extension_increment', 5)
+    repair_extension_max = params.get('repair_extension_max', 60)
+
     result = {
         'success': False,
         'file_path': str(file_path),
@@ -64,16 +82,17 @@ def process_single_file(file_path: Path, output_folder: Path,
         'error': None
     }
 
+    # Collects repair info per grid label; used to write repair_report.json at the end.
+    file_repair_info: Dict[str, dict] = {}
+
     try:
         print(f"\n{'='*80}")
         print(f"Processing file: {file_path.name}")
         print('='*80)
 
-        # Try to load channel selection JSON
         channel_selection = load_channel_selection_json(file_path)
         grids = get_grids_from_json(channel_selection)
 
-        # If grids are found in JSON, process each grid separately
         if grids:
             print(f"\nProcessing {len(grids)} grid(s) separately...")
             for grid_idx, grid_info in enumerate(grids):
@@ -82,7 +101,6 @@ def process_single_file(file_path: Path, output_folder: Path,
                 print(f"Processing grid {grid_idx + 1}/{len(grids)}: {grid_key}")
                 print('-'*80)
 
-                # Try to extract muscle name from description for filename
                 muscle_name = None
                 try:
                     mat_data = sio.loadmat(file_path)
@@ -100,68 +118,223 @@ def process_single_file(file_path: Path, output_folder: Path,
                 except Exception as e:
                     print(f"Warning: Could not extract muscle name: {e}")
 
-                # Create output path with grid suffix and optional muscle name
                 filename_base = file_path.stem
-                if muscle_name:
-                    filename_suffix = f'_{grid_key}_{muscle_name}'
-                else:
-                    filename_suffix = f'_{grid_key}'
-                output_path = output_folder.joinpath(
-                    f'{filename_base}{filename_suffix}'
-                ).with_suffix(".pkl")
+                filename_suffix = f'_{grid_key}_{muscle_name}' if muscle_name else f'_{grid_key}'
+                output_path = output_folder.joinpath(f'{filename_base}{filename_suffix}').with_suffix(".pkl")
+                grid_label = output_path.stem  # e.g. "recording_GR1_Biceps"
 
-                # Train model for this grid
-                dictionary, _, mat, config = train(file_path, grid_info=grid_info,
-                                                  grid_suffix=f"_{grid_key}",
-                                                  output_folder=output_folder,
-                                                  algorithm_params=algorithm_params)
-
-                # Save results
-                save_results(output_path, dictionary)
-                print(f"Saved results to {output_path}")
-
-                # Prepare Raw Data Info for openHDEMG
+                # First decomposition attempt
+                dictionary, _, _, config = train(file_path, grid_info=grid_info,
+                                                 grid_suffix=f"_{grid_key}",
+                                                 output_folder=output_folder,
+                                                 algorithm_params=algorithm_params)
                 rawEMG_Channels, refSignal, fsamp, ied, extras = extract_raw_emg_metadata(file_path, config)
-                # Save decomposition result to openhdemg compressed json format
-                export_to_openhdemg_json(config, output_path, rawEMG_Channels, refSignal, ied, fsamp, str(file_path), extras)
-                # Save decomposition result to muEdit compatible .mat format for manual cleaning
-                export_to_muedit_mat(str(output_path).replace('.pkl', '.json'))
+                mu_count = len(dictionary.get('silhouettes', []))
+                actual_ef = config.extension_factor  # resolved value (may have been 'auto')
+
+                if repair_enabled and mu_count < repair_mu_threshold:
+                    print(f"  [REPAIR] MU yield {mu_count} < threshold {repair_mu_threshold} — starting repair loop")
+
+                    repair_base = output_folder / 'repair_artefacts' / file_path.stem / grid_label
+                    repair_base.mkdir(parents=True, exist_ok=True)
+
+                    attempts = []
+
+                    # Save first attempt as attempt_1
+                    attempt_folder = repair_base / f'attempt_1_ef{actual_ef}'
+                    attempt_folder.mkdir(parents=True, exist_ok=True)
+                    _save_grid_outputs(dictionary, config, file_path,
+                                       attempt_folder / output_path.name,
+                                       rawEMG_Channels, refSignal, fsamp, ied, extras)
+                    attempts.append({
+                        'attempt': 1,
+                        'extension_factor': actual_ef,
+                        'mu_count': mu_count,
+                        'folder': str(attempt_folder),
+                    })
+
+                    best_dictionary, best_config, best_mu_count = dictionary, config, mu_count
+                    current_ef = actual_ef
+
+                    for retry in range(1, repair_max_retries + 1):
+                        current_ef = actual_ef + retry * repair_extension_increment
+                        if current_ef > repair_extension_max:
+                            print(f"  [REPAIR] extension_factor {current_ef} would exceed max {repair_extension_max}, stopping.")
+                            break
+                        print(f"  [REPAIR] Attempt {retry + 1}: extension_factor = {current_ef}")
+                        retry_params = {**params, 'extension_factor': current_ef}
+                        try:
+                            new_dict, _, _, new_config = train(file_path, grid_info=grid_info,
+                                                               grid_suffix=f"_{grid_key}",
+                                                               output_folder=output_folder,
+                                                               algorithm_params=retry_params)
+                            new_mu_count = len(new_dict.get('silhouettes', []))
+                            print(f"  [REPAIR]   → {new_mu_count} MU(s) found")
+
+                            attempt_folder = repair_base / f'attempt_{retry + 1}_ef{current_ef}'
+                            attempt_folder.mkdir(parents=True, exist_ok=True)
+                            _save_grid_outputs(new_dict, new_config, file_path,
+                                               attempt_folder / output_path.name,
+                                               rawEMG_Channels, refSignal, fsamp, ied, extras)
+                            attempts.append({
+                                'attempt': retry + 1,
+                                'extension_factor': current_ef,
+                                'mu_count': new_mu_count,
+                                'folder': str(attempt_folder),
+                            })
+
+                            if new_mu_count > best_mu_count:
+                                best_dictionary, best_config, best_mu_count = new_dict, new_config, new_mu_count
+                        except Exception as repair_err:
+                            print(f"  [REPAIR]   → attempt {retry + 1} failed: {repair_err}")
+                            attempts.append({
+                                'attempt': retry + 1,
+                                'extension_factor': current_ef,
+                                'mu_count': 0,
+                                'error': str(repair_err),
+                            })
+
+                    # Save best result to the normal output location
+                    _save_grid_outputs(best_dictionary, best_config, file_path, output_path,
+                                       rawEMG_Channels, refSignal, fsamp, ied, extras)
+                    best_attempt = max(attempts, key=lambda a: a.get('mu_count', 0))
+                    print(f"  [REPAIR] Best: {best_mu_count} MU(s) at ef={best_attempt['extension_factor']}")
+                    print(f"Saved best result to {output_path}")
+
+                    file_repair_info[grid_label] = {
+                        'trigger': f'MU yield {mu_count} < threshold {repair_mu_threshold}',
+                        'attempts': attempts,
+                        'best_attempt': best_attempt,
+                        'improved': best_mu_count > mu_count,
+                        'final_output': str(output_path),
+                    }
+                else:
+                    _save_grid_outputs(dictionary, config, file_path, output_path,
+                                       rawEMG_Channels, refSignal, fsamp, ied, extras)
+                    print(f"Saved results to {output_path}")
 
                 print(f"Grid {grid_key} processing complete!")
-
-                # Record grid processing success
                 result['grids_processed'].append({
                     'grid_key': grid_key,
                     'muscle_name': muscle_name,
                     'output_file': str(output_path),
-                    'success': True
+                    'success': True,
                 })
         else:
-            # No channel selection JSON found - use original behavior (backward compatibility)
+            # No channel selection JSON — backward-compatible single-grid path
             print("\nNo channel selection JSON found. Using default channel configuration...")
 
             output_path = output_folder.joinpath(file_path.stem).with_suffix(".pkl")
+            grid_label = output_path.stem
 
-            dictionary, _, mat, config = train(file_path, output_folder=output_folder,
-                                              algorithm_params=algorithm_params)
-
-            save_results(output_path, dictionary)
-            print(f"Saved results to {output_path}")
-
-            # Prepare Raw Data Info for openHDEMG
+            dictionary, _, _, config = train(file_path, output_folder=output_folder,
+                                             algorithm_params=algorithm_params)
             rawEMG_Channels, refSignal, fsamp, ied, extras = extract_raw_emg_metadata(file_path, config)
-            # Save decomposition result to openhdemg compressed json format
-            export_to_openhdemg_json(config, output_path, rawEMG_Channels, refSignal, ied, fsamp, str(file_path), extras)
-            # Save decomposition result to muEdit compatible .mat format for manual cleaning
-            export_to_muedit_mat(str(output_path).replace('.pkl', '.json'))
+            mu_count = len(dictionary.get('silhouettes', []))
+            actual_ef = config.extension_factor
 
-            # Record single file processing success
+            if repair_enabled and mu_count < repair_mu_threshold:
+                print(f"  [REPAIR] MU yield {mu_count} < threshold {repair_mu_threshold} — starting repair loop")
+
+                repair_base = output_folder / 'repair_artefacts' / file_path.stem / grid_label
+                repair_base.mkdir(parents=True, exist_ok=True)
+
+                attempts = []
+                attempt_folder = repair_base / f'attempt_1_ef{actual_ef}'
+                attempt_folder.mkdir(parents=True, exist_ok=True)
+                _save_grid_outputs(dictionary, config, file_path,
+                                   attempt_folder / output_path.name,
+                                   rawEMG_Channels, refSignal, fsamp, ied, extras)
+                attempts.append({
+                    'attempt': 1,
+                    'extension_factor': actual_ef,
+                    'mu_count': mu_count,
+                    'folder': str(attempt_folder),
+                })
+
+                best_dictionary, best_config, best_mu_count = dictionary, config, mu_count
+                current_ef = actual_ef
+
+                for retry in range(1, repair_max_retries + 1):
+                    current_ef = actual_ef + retry * repair_extension_increment
+                    if current_ef > repair_extension_max:
+                        print(f"  [REPAIR] extension_factor {current_ef} would exceed max {repair_extension_max}, stopping.")
+                        break
+                    print(f"  [REPAIR] Attempt {retry + 1}: extension_factor = {current_ef}")
+                    retry_params = {**params, 'extension_factor': current_ef}
+                    try:
+                        new_dict, _, _, new_config = train(file_path, output_folder=output_folder,
+                                                           algorithm_params=retry_params)
+                        new_mu_count = len(new_dict.get('silhouettes', []))
+                        print(f"  [REPAIR]   → {new_mu_count} MU(s) found")
+
+                        attempt_folder = repair_base / f'attempt_{retry + 1}_ef{current_ef}'
+                        attempt_folder.mkdir(parents=True, exist_ok=True)
+                        _save_grid_outputs(new_dict, new_config, file_path,
+                                           attempt_folder / output_path.name,
+                                           rawEMG_Channels, refSignal, fsamp, ied, extras)
+                        attempts.append({
+                            'attempt': retry + 1,
+                            'extension_factor': current_ef,
+                            'mu_count': new_mu_count,
+                            'folder': str(attempt_folder),
+                        })
+
+                        if new_mu_count > best_mu_count:
+                            best_dictionary, best_config, best_mu_count = new_dict, new_config, new_mu_count
+                    except Exception as repair_err:
+                        print(f"  [REPAIR]   → attempt {retry + 1} failed: {repair_err}")
+                        attempts.append({
+                            'attempt': retry + 1,
+                            'extension_factor': current_ef,
+                            'mu_count': 0,
+                            'error': str(repair_err),
+                        })
+
+                _save_grid_outputs(best_dictionary, best_config, file_path, output_path,
+                                   rawEMG_Channels, refSignal, fsamp, ied, extras)
+                best_attempt = max(attempts, key=lambda a: a.get('mu_count', 0))
+                print(f"  [REPAIR] Best: {best_mu_count} MU(s) at ef={best_attempt['extension_factor']}")
+                print(f"Saved best result to {output_path}")
+
+                file_repair_info[grid_label] = {
+                    'trigger': f'MU yield {mu_count} < threshold {repair_mu_threshold}',
+                    'attempts': attempts,
+                    'best_attempt': best_attempt,
+                    'improved': best_mu_count > mu_count,
+                    'final_output': str(output_path),
+                }
+            else:
+                _save_grid_outputs(dictionary, config, file_path, output_path,
+                                   rawEMG_Channels, refSignal, fsamp, ied, extras)
+                print(f"Saved results to {output_path}")
+
             result['grids_processed'].append({
                 'grid_key': 'default',
                 'muscle_name': None,
                 'output_file': str(output_path),
-                'success': True
+                'success': True,
             })
+
+        # Write per-file repair report if any grid triggered the repair loop
+        if file_repair_info:
+            repair_report_dir = output_folder / 'repair_artefacts' / file_path.stem
+            repair_report_dir.mkdir(parents=True, exist_ok=True)
+            report = {
+                'file': str(file_path),
+                'generated_at': datetime.now().isoformat(),
+                'repair_settings': {
+                    'mu_threshold': repair_mu_threshold,
+                    'max_retries': repair_max_retries,
+                    'extension_increment': repair_extension_increment,
+                    'extension_max': repair_extension_max,
+                },
+                'grids': file_repair_info,
+            }
+            report_path = repair_report_dir / 'repair_report.json'
+            with open(report_path, 'w', encoding='utf-8') as fh:
+                json.dump(report, fh, indent=2)
+            print(f"\n[REPAIR] Report written to {report_path}")
 
         result['success'] = True
         print(f"\n[OK] Successfully processed: {file_path.name}")

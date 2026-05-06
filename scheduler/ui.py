@@ -1319,6 +1319,9 @@ class SchedulerUI:
             # Display parameters in a numbered list
             param_keys = list(DEFAULT_ALGORITHM_PARAMS.keys())
             for idx, key in enumerate(param_keys, 1):
+                if key == 'repair_enabled':
+                    print(f"  {'─' * 14} Repair Loop {'─' * 32}")
+
                 value = params.get(key, DEFAULT_ALGORITHM_PARAMS[key])
                 meta = ALGORITHM_PARAMS_METADATA.get(key, {})
                 desc = meta.get('description', '')
@@ -1535,6 +1538,9 @@ class SchedulerUI:
             # Display parameters in a numbered list
             param_keys = list(DEFAULT_ALGORITHM_PARAMS.keys())
             for idx, key in enumerate(param_keys, 1):
+                if key == 'repair_enabled':
+                    print(f"  {'─' * 14} Repair Loop {'─' * 32}")
+
                 value = params.get(key, DEFAULT_ALGORITHM_PARAMS[key])
                 meta = ALGORITHM_PARAMS_METADATA.get(key, {})
 

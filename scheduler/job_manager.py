@@ -34,6 +34,12 @@ DEFAULT_ALGORITHM_PARAMS = {
     "peel_off": True,
     "swarm": True,
     "electrode": "",
+    # Repair loop settings
+    "repair_enabled": False,
+    "repair_mu_threshold": 2,         # trigger if MU yield < this value
+    "repair_max_retries": 3,          # max retry attempts
+    "repair_extension_increment": 5,  # extension_factor step per retry
+    "repair_extension_max": 60,       # upper cutoff for extension_factor
 }
 
 # Human-readable descriptions for the built-in presets from scd/configs.json
@@ -138,6 +144,34 @@ ALGORITHM_PARAMS_METADATA = {
     "electrode": {
         "type": "string",
         "description": "Electrode type descriptor for labelling (e.g. 'surface grid', 'intramuscular')"
+    },
+    "repair_enabled": {
+        "type": "bool",
+        "description": "Enable repair loop: retry decomposition with higher extension_factor when MU yield is below threshold"
+    },
+    "repair_mu_threshold": {
+        "type": "int",
+        "min": 1,
+        "max": 20,
+        "description": "Trigger repair loop when MU yield is strictly less than this value"
+    },
+    "repair_max_retries": {
+        "type": "int",
+        "min": 1,
+        "max": 10,
+        "description": "Maximum number of repair attempts (each increases extension_factor by the increment)"
+    },
+    "repair_extension_increment": {
+        "type": "int",
+        "min": 1,
+        "max": 50,
+        "description": "Amount to increase extension_factor per repair attempt"
+    },
+    "repair_extension_max": {
+        "type": "int",
+        "min": 5,
+        "max": 200,
+        "description": "Upper cutoff for extension_factor during repair loop"
     },
 }
 
