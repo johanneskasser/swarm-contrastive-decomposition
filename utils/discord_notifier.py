@@ -173,7 +173,7 @@ def send_notification(webhook_url: str, payload: dict) -> bool:
         req = urllib.request.Request(
             webhook_url,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"},
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=15) as resp:
