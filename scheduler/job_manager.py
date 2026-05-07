@@ -215,10 +215,22 @@ class JobManager:
             "global_algorithm_params": None  # None means use DEFAULT_ALGORITHM_PARAMS
         }
 
+    def _reload_from_file(self):
+        """Reload jobs data from file before any write operation.
+
+        Prevents lost-update races when the UI and orchestrator process both
+        hold a JobManager instance and write to the same jobs_config.json.
+        Without this, Process A reads stale data and overwrites changes made
+        by Process B.
+        """
+        self.jobs_data = self._load_or_create_config()
+
     def save_jobs(self):
-        """Save jobs to JSON file."""
-        with open(self.config_file, 'w', encoding='utf-8') as f:
+        """Save jobs to JSON file atomically (write-to-temp then rename)."""
+        tmp_file = self.config_file.with_suffix('.json.tmp')
+        with open(tmp_file, 'w', encoding='utf-8') as f:
             json.dump(self.jobs_data, f, indent=2, ensure_ascii=False)
+        tmp_file.replace(self.config_file)
 
     def load_jobs(self) -> List[Dict]:
         """
@@ -252,6 +264,8 @@ class JobManager:
         Raises:
             ValueError: If job name already exists or paths are invalid
         """
+        self._reload_from_file()
+
         # Validate job name is unique
         if any(job['name'] == name for job in self.jobs_data['jobs']):
             raise ValueError(f"Job with name '{name}' already exists")
@@ -309,6 +323,8 @@ class JobManager:
         Returns:
             True if job was removed, False if not found
         """
+        self._reload_from_file()
+
         jobs = self.jobs_data['jobs']
         initial_count = len(jobs)
         self.jobs_data['jobs'] = [j for j in jobs if j['id'] != job_id]
@@ -357,6 +373,8 @@ class JobManager:
             status: New status value
             **kwargs: Additional fields to update (started_at, completed_at, etc.)
         """
+        self._reload_from_file()
+
         job = self.get_job(job_id)
         if not job:
             raise ValueError(f"Job with ID '{job_id}' not found")
@@ -400,6 +418,8 @@ class JobManager:
         Returns:
             Number of jobs removed
         """
+        self._reload_from_file()
+
         initial_count = len(self.jobs_data['jobs'])
         self.jobs_data['jobs'] = [
             j for j in self.jobs_data['jobs']
@@ -482,6 +502,8 @@ class JobManager:
         Args:
             command: Shell command to execute, or None to disable hook
         """
+        self._reload_from_file()
+
         if "hooks" not in self.jobs_data:
             self.jobs_data["hooks"] = {}
 
@@ -496,6 +518,8 @@ class JobManager:
 
     def set_discord_webhook(self, url: Optional[str]):
         """Set or clear the Discord webhook URL."""
+        self._reload_from_file()
+
         if "hooks" not in self.jobs_data:
             self.jobs_data["hooks"] = {}
         self.jobs_data["hooks"]["discord_webhook_url"] = url
@@ -521,6 +545,8 @@ class JobManager:
             job_id: Job ID to update
             files: List of file paths to process
         """
+        self._reload_from_file()
+
         job = self.get_job(job_id)
         if not job:
             raise ValueError(f"Job with ID '{job_id}' not found")
@@ -546,6 +572,8 @@ class JobManager:
                     'error': str (optional)
                 }
         """
+        self._reload_from_file()
+
         job = self.get_job(job_id)
         if not job:
             raise ValueError(f"Job with ID '{job_id}' not found")
@@ -567,6 +595,8 @@ class JobManager:
             job_id: Job ID to update
             file_path: Path of file being processed, or None
         """
+        self._reload_from_file()
+
         job = self.get_job(job_id)
         if not job:
             raise ValueError(f"Job with ID '{job_id}' not found")
@@ -582,6 +612,8 @@ class JobManager:
             job_id: Job ID to update
             params: Dictionary of parameter names and values to update
         """
+        self._reload_from_file()
+
         job = self.get_job(job_id)
         if not job:
             raise ValueError(f"Job with ID '{job_id}' not found")
@@ -623,6 +655,8 @@ class JobManager:
         Args:
             job_id: Job ID to reset params for
         """
+        self._reload_from_file()
+
         job = self.get_job(job_id)
         if not job:
             raise ValueError(f"Job with ID '{job_id}' not found")
@@ -655,6 +689,8 @@ class JobManager:
         Args:
             params: Dictionary of parameter names and values to set globally.
         """
+        self._reload_from_file()
+
         # Validate all keys
         for key in params:
             if key not in DEFAULT_ALGORITHM_PARAMS:
@@ -676,6 +712,8 @@ class JobManager:
             param_key: Name of the parameter
             value: New value for the parameter
         """
+        self._reload_from_file()
+
         if param_key not in DEFAULT_ALGORITHM_PARAMS:
             raise ValueError(f"Unknown algorithm parameter: {param_key}")
 
@@ -692,6 +730,8 @@ class JobManager:
         This sets global_algorithm_params to None, meaning DEFAULT_ALGORITHM_PARAMS
         will be used.
         """
+        self._reload_from_file()
+
         self.jobs_data['global_algorithm_params'] = None
         self.save_jobs()
 
