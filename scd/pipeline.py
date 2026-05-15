@@ -473,3 +473,77 @@ def train(path, grid_info=None, grid_suffix="", output_folder=None, algorithm_pa
     predicted_timestamps, dictionary = model.run(neural_data, config)
 
     return dictionary, predicted_timestamps, mat, config
+
+
+def run_cli() -> None:
+    """Entry point for background subprocess: python -m scd.pipeline [args]."""
+    import argparse
+    import os
+    import traceback
+    from scd.processing.postprocess import save_results
+    from scd.utils.exporting import export_to_openhdemg_json, export_to_muedit_mat
+    from scd.utils.preprocessing import extract_raw_emg_metadata
+
+    parser = argparse.ArgumentParser(description='SCD batch decomposition')
+    parser.add_argument('--input-path', '-i', type=str, default='data/input')
+    parser.add_argument('--output-path', '-o', type=str, default='data/output')
+    parser.add_argument('--status-file', '-s', type=str, default=None)
+    parser.add_argument('--params-file', '-p', type=str, default=None)
+    args = parser.parse_args()
+
+    INPUT_PATH = Path(args.input_path)
+    OUTPUT_PATH = Path(args.output_path)
+    OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
+
+    print(f"\nInput directory: {INPUT_PATH.resolve()}")
+    print(f"Output directory: {OUTPUT_PATH.resolve()}\n")
+
+    status_tracker = None
+    if args.status_file:
+        from scd.utils.status_tracker import StatusTracker
+        status_tracker = StatusTracker.load_from_file(Path(args.status_file), OUTPUT_PATH)
+        file_paths = [f for f in INPUT_PATH.iterdir() if f.is_file() and f.suffix == '.mat']
+        status_tracker.initialize(file_paths)
+
+    algorithm_params = None
+    if args.params_file:
+        params_path = Path(args.params_file)
+    else:
+        candidates = sorted(OUTPUT_PATH.glob("algorithm_params*.json"),
+                            key=lambda p: p.stat().st_mtime, reverse=True)
+        params_path = candidates[0] if candidates else None
+        if params_path:
+            print(f"Auto-detected algorithm parameters file: {params_path.name}")
+
+    if params_path and params_path.exists():
+        with open(params_path, 'r', encoding='utf-8') as f:
+            algorithm_params = json.load(f)
+
+    file_paths = find_processable_files(INPUT_PATH)
+    if not file_paths:
+        print(f'No .mat files in {INPUT_PATH}')
+
+    for file_path in file_paths:
+        if status_tracker:
+            status_tracker.set_processing(file_path)
+        try:
+            result = process_single_file(file_path, OUTPUT_PATH, algorithm_params=algorithm_params)
+            if result['success']:
+                if status_tracker:
+                    status_tracker.set_done(file_path, len(result['grids_processed']))
+            else:
+                if status_tracker:
+                    status_tracker.set_failed(file_path, result.get('error', 'unknown error'))
+        except Exception as e:
+            print(f"\n[ERROR] {file_path.name}: {e}")
+            traceback.print_exc()
+            if status_tracker:
+                status_tracker.set_failed(file_path, str(e))
+
+    print('\n' + '='*80)
+    print('--- ALL DONE ---')
+    print('='*80)
+
+
+if __name__ == '__main__':
+    run_cli()

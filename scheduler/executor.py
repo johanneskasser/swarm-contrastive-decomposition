@@ -244,12 +244,8 @@ class JobExecutor:
         with open(log_file_path, 'w', encoding='utf-8') as log_file:
             self._write_log_header(log_file, job, start_time)
 
-        # Determine python executable
-        python_exe = 'python3' if sys.platform != 'win32' else sys.executable
-
-        # Prepare command (with -u for unbuffered output for real-time logging)
-        # Pass status file path and params file to main.py
-        cmd = [python_exe, '-u', 'main.py', '-i', input_path, '-o', output_path,
+        cmd = [sys.executable, '-u', '-m', 'scd.pipeline',
+               '-i', input_path, '-o', output_path,
                '--status-file', status_file_path, '--params-file', str(params_file_path)]
 
         # Start process in background (detached)
@@ -331,11 +327,8 @@ class JobExecutor:
 
             # Execute main.py via subprocess
             try:
-                # Determine python executable (python3 on Linux, python on Windows)
-                python_exe = 'python3' if sys.platform != 'win32' else sys.executable
-
                 process = subprocess.Popen(
-                    [python_exe, '-u', 'main.py', '-i', input_path, '-o', output_path],
+                    [sys.executable, '-u', '-m', 'scd.pipeline', '-i', input_path, '-o', output_path],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,  # Combine stderr with stdout
                     text=True,
