@@ -37,14 +37,17 @@ dev = [
     "black>=23.0",
 ]
 
+[project.scripts]
+scd-scheduler = "scheduler:main"
+
 [project.urls]
-Homepage = "https://github.com/AgneGris/swarm-contrastive-decomposition"
-Repository = "https://github.com/AgneGris/swarm-contrastive-decomposition"
-Issues = "https://github.com/AgneGris/swarm-contrastive-decomposition/issues"
+Homepage = "https://github.com/johanneskasser/swarm-contrastive-decomposition"
+Repository = "https://github.com/johanneskasser/swarm-contrastive-decomposition"
+Issues = "https://github.com/johanneskasser/swarm-contrastive-decomposition/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["scd*"]
+include = ["scd*", "scheduler*"]
 
 [tool.setuptools.package-data]
 scd = ["*.json"]

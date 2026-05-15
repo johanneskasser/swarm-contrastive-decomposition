@@ -33,13 +33,13 @@ pip install swarm-contrastive-decomposition
 ### From GitHub (Latest Development Version)
 
 ```bash
-pip install git+https://github.com/AgneGris/swarm-contrastive-decomposition.git
+pip install git+https://github.com/johanneskasser/swarm-contrastive-decomposition.git
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/AgneGris/swarm-contrastive-decomposition
+git clone https://github.com/johanneskasser/swarm-contrastive-decomposition
 cd swarm-contrastive-decomposition
 pip install -e .
 ```
