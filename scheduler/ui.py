@@ -1239,14 +1239,7 @@ class SchedulerUI:
             print("\nCancelled.")
             return
 
-        import sys
-        from pathlib import Path as _Path
-        notifier_path = _Path(__file__).parent.parent / 'utils' / 'discord_notifier.py'
-        notifier_dir = str(notifier_path.parent.parent)
-        if notifier_dir not in sys.path:
-            sys.path.insert(0, notifier_dir)
-
-        from utils.discord_notifier import collect_job_results, build_discord_payload, send_notification
+        from scd.utils.discord_notifier import collect_job_results, build_discord_payload, send_notification
 
         print("\nCollecting metrics from output files...")
         summary = collect_job_results(job)

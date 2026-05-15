@@ -16,9 +16,6 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from scheduler.job_manager import JobManager
 from scheduler.executor import JobExecutor
 
@@ -208,10 +205,9 @@ def run_orchestrator(job_ids):
     discord_url = job_manager.get_discord_webhook()
     if discord_url:
         log_message("Sending Discord notification...")
-        notifier = Path(__file__).parent.parent / 'utils' / 'discord_notifier.py'
         try:
             result = subprocess.run(
-                [sys.executable, str(notifier), '--job-ids'] + job_ids
+                [sys.executable, '-m', 'scd.utils.discord_notifier', '--job-ids'] + job_ids
                 + ['--webhook-url', discord_url],
                 timeout=30,
                 capture_output=True,

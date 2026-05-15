@@ -325,7 +325,7 @@ class JobExecutor:
             # Write log header
             self._write_log_header(log_file, job, start_time)
 
-            # Execute main.py via subprocess
+            # Execute decomposition via scd.pipeline module
             try:
                 process = subprocess.Popen(
                     [sys.executable, '-u', '-m', 'scd.pipeline', '-i', input_path, '-o', output_path],
@@ -389,7 +389,7 @@ JOB: {job['name']} ({job['id']})
 Started: {start_time.strftime('%Y-%m-%d %H:%M:%S')}
 Input Path:  {job['input_path']}
 Output Path: {job['output_path']}
-Command: python3 -u main.py -i {job['input_path']} -o {job['output_path']}
+Command: python -u -m scd.pipeline -i {job['input_path']} -o {job['output_path']}
 {'='*80}
 
 ALGORITHM PARAMETERS:
