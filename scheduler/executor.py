@@ -12,9 +12,7 @@ from pathlib import Path
 from typing import Dict, Tuple, Optional, List, Any
 import json
 
-# Import status tracker
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from utils.status_tracker import StatusTracker
+from scd.utils.status_tracker import StatusTracker
 from .job_manager import DEFAULT_ALGORITHM_PARAMS
 
 
@@ -51,8 +49,7 @@ class JobExecutor:
         start_time = datetime.now()
 
         # Find all processable files
-        sys.path.insert(0, str(Path.cwd()))
-        from main import find_processable_files, process_single_file
+        from scd.pipeline import find_processable_files, process_single_file
 
         files = find_processable_files(input_path)
         if not files:
@@ -225,8 +222,7 @@ class JobExecutor:
         status_tracker = StatusTracker(output_dir, job_name=job_name)
 
         # Find all processable files
-        sys.path.insert(0, str(Path.cwd()))
-        from main import find_processable_files
+        from scd.pipeline import find_processable_files
         input_path_obj = Path(input_path)
         files = find_processable_files(input_path_obj)
 
